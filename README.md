@@ -19,7 +19,7 @@ owns groups, membership, invites, history and images.
 | **Images** | send PNG/JPG/GIF/BMP — drag & drop onto the window, the built-in image browser, or copy them into `config/groupchat/images` |
 | **Stickers** | bundled pack (`smile`, `laugh`, `sad`, `cool`, `heart`, `star`, `creeper`, `diamond`, `party`) |
 | **Share coordinates** | one **Coords** button posts your position + dimension; **click the message to turn it into a waypoint** |
-| **Waypoints** | client-side list (`B`), live HUD with distance + compass bearing, persisted in `config/groupchat/waypoints.json` |
+| **Waypoints** | drawn **in the world**: coloured marker box, a 64-block light column and a name+distance tag; `B` manages them |
 | **Voice calls** | push-to-talk voice channels per group, mixed so several people can talk at once |
 | **Notifications** | new messages are echoed to the chat HUD with a sound when the hub is closed |
 | **Persistence** | groups + history are stored in the world folder, images on disk, all survive restarts |
@@ -49,7 +49,7 @@ Grab the build with:
 | Invite someone | `Members` → type a name → `Invite`, or `/gchat invite <player> <group>` |
 | Accept an invite | `Invites (n)` in the sidebar → `Accept` |
 | Send a message | type in the box, `Enter` |
-| Send an image | `Img` (built-in browser) or **drag & drop** an image file on the window |
+| Send an image | `Img` (browser with thumbnails, opens on `screenshots`), paste a folder/file path into its address box, or **drag & drop** a file on the window |
 | Send a sticker | `Stk` |
 | Share coordinates | `Coords` — posts your position to the group |
 | Create a waypoint | **click a shared-coordinate message** in chat |
@@ -69,14 +69,14 @@ without opening the GUI.
 1. Stand somewhere interesting and press **`Coords`** in the composer. The group instantly gets a
    message like `141, -60, -179 · Overworld · 580 m away`.
 2. Anyone in the group **clicks that message** and a waypoint appears in their own list.
-3. Waypoints show up in the top-right HUD with distance and compass bearing
-   (`AgentA's spot · #expedition  580m NE`), and in the `B` screen where you can hide, delete or add
-   the spot you are standing on.
+3. The waypoint is rendered **in the world** at that exact spot: a coloured marker box, a light
+   column you can see from far away, and a name + distance tag when you are within 96 m. The `B`
+   screen lists them (hide / delete / add the spot you're standing on).
 
 ![A second player's view of shared coordinates, a fetched screenshot and the waypoint bubble](docs/screenshot-two-players.png)
 
 ![Waypoint list](docs/screenshot-waypoints.png)
-![Waypoint HUD](docs/screenshot-hud.png)
+![A waypoint rendered in the world](docs/screenshot-waypoint-world.png)
 
 Waypoints are per-client: the server only relays the coordinate message, so each player decides
 what to keep. Clicking the same message twice does nothing (duplicates within 2 blocks are ignored).
@@ -196,6 +196,6 @@ creation and cross-client image download.
 * History is capped at 200 messages per group (oldest are dropped, including image references).
 * Stickers are the bundled pack; custom stickers are sent as regular images.
 * Voice volume is fixed (per-member sliders are on the roadmap).
-* Waypoints are HUD/list only — no in-world beam or minimap yet, and they are not shared between
-  players (each player creates their own from the coordinate message).
+* Waypoints are per-player (each player creates their own from the coordinate message); there is no
+  minimap, and markers are hidden for waypoints in other dimensions.
 * The server operator can read stored messages and images — same as any server-side chat mod.

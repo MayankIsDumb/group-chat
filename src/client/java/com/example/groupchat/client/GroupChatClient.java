@@ -4,16 +4,13 @@ import com.example.groupchat.client.dev.DebugHarness;
 import com.example.groupchat.client.media.TextureCache;
 import com.example.groupchat.client.ui.HubScreen;
 import com.example.groupchat.client.ui.WaypointsScreen;
-import com.example.groupchat.client.waypoint.WaypointHud;
 import com.example.groupchat.client.waypoint.WaypointManager;
+import com.example.groupchat.client.waypoint.WaypointWorldRenderer;
 import com.example.groupchat.client.voice.VoiceClient;
 import com.example.groupchat.net.Payloads;
 import com.example.groupchat.net.Payloads.GroupDto;
 import com.example.groupchat.net.Payloads.MessageDto;
-import com.example.groupchat.Constants;
 import com.mojang.blaze3d.platform.InputConstants;
-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
-import net.minecraft.resources.Identifier;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -59,7 +56,7 @@ public class GroupChatClient implements ClientModInitializer {
 				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B, KeyMapping.Category.MULTIPLAYER));
 
 		WaypointManager.INSTANCE.ensureLoaded();
-		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(Constants.MOD_ID, "waypoints"), new WaypointHud());
+		WaypointWorldRenderer.register();
 
 		ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> this.onDisconnect());

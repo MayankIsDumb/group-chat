@@ -360,7 +360,9 @@ public class HubScreen extends Screen {
 
 		if (maxScroll > 0) {
 			int barHeight = Math.max(18, (int) (viewHeight * (viewHeight / (double) total)));
-			int barY = areaTop + (int) ((viewHeight - barHeight) * (this.scroll / maxScroll));
+			int travel = viewHeight - barHeight;
+			double progress = 1.0D - (this.scroll / maxScroll); // 1 = newest (bottom), 0 = oldest (top)
+			int barY = areaTop + (int) Math.round(travel * progress);
 			UiKit.fill(graphics, x + width - 4, barY, 2, barHeight, 0x60FFFFFF);
 		}
 
@@ -677,7 +679,8 @@ public class HubScreen extends Screen {
 			return true;
 		}
 		if (this.mode == Mode.CHAT) {
-			this.scroll -= scrollY * 24;
+			// scroll counts pixels above the newest message, so "wheel up" increases it
+			this.scroll += scrollY * 24;
 			return true;
 		}
 		return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);

@@ -56,7 +56,11 @@ public final class DebugHarness {
 		}
 		GroupChatClient.LOGGER.warn("[groupchat] devtools enabled (connect='{}', agent='{}')", CONNECT, AGENT);
 		if (!AGENT.isEmpty()) {
-			AgentScenario.init(AGENT);
+			if (AGENT.equals("friend") || AGENT.equals("human")) {
+				LiveSession.init(AGENT);
+			} else {
+				AgentScenario.init(AGENT);
+			}
 			return;
 		}
 		ClientTickEvents.END_CLIENT_TICK.register(DebugHarness::tick);

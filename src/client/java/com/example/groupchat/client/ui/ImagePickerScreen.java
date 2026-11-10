@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -45,6 +46,8 @@ public class ImagePickerScreen extends Screen {
 	private final Map<Path, String> thumbErrors = new LinkedHashMap<>();
 	private Path directory;
 	private int serial;
+	private EditBox pathBox;
+	private String status;
 
 	public ImagePickerScreen(Screen parent, Consumer<Path> onPick) {
 		super(Component.literal("Send image"));
@@ -55,9 +58,25 @@ public class ImagePickerScreen extends Screen {
 	@Override
 	protected void init() {
 		if (this.directory == null) {
-			this.directory = imagesDir();
+			Path shots = this.screenshotsDir();
+			this.directory = this.hasImages(shots) || !this.hasImages(this.imagesDir()) ? shots : this.imagesDir();
 		}
+		this.pathBox = new EditBox(this.font, 10, 10, 100, 16, Component.literal("Folder"));
+		this.pathBox.setMaxLength(260);
+		this.pathBox.setHint(Component.literal("paste a folder or image path, then press Enter"));
+		this.addRenderableWidget(this.pathBox);
 		this.refresh();
+	}
+
+	private boolean hasImages(Path dir) {
+		if (dir == null || !Files.isDirectory(dir)) {
+			return false;
+		}
+		try (Stream<Path> stream = Files.list(dir)) {
+			return stream.anyMatch(ImageUtil::looksLikeImage);
+		} catch (IOException exception) {
+			return false;
+		}
 	}
 
 	private Path imagesDir() {
@@ -75,6 +94,9 @@ public class ImagePickerScreen extends Screen {
 
 	private void refresh() {
 		this.clicks.clear();
+		if (this.pathBox != null && this.directory != null) {
+			this.pathBox.setValue(this.directory.toString());
+		}
 		this.folders.clear();
 		this.images.clear();
 		if (this.directory == null || !Files.isDirectory(this.directory)) {
@@ -109,11 +131,14 @@ public class ImagePickerScreen extends Screen {
 		UiKit.panel(graphics, x, y, width, height);
 
 		graphics.drawString(this.font, "Send an image", x + 10, y + 9, UiKit.TEXT, false);
-		graphics.drawString(this.font, UiKit.trim(this.font, this.directory == null ? "" : this.directory.toString(), width - 130),
-				x + 10, y + 22, UiKit.TEXT_FAINT, false);
+		if (this.pathBox != null) {
+			this.pathBox.setX(x + 10);
+			this.pathBox.setY(y + 21);
+			this.pathBox.setWidth(width - 12);
+		}
 
 		int buttonY = y + 6;
-		UiKit.button(graphics, this.font, x + width - 200, buttonY, 60, 16, Component.literal("Shots"), mouseX, mouseY, false);
+		UiKit.button(graphics, this.font, x + width - 200, buttonY, 60, 16, Component.literal("Shots"), mouseX, mouseY, true);
 		this.addClick(x + width - 200, buttonY, 60, 16, () -> this.navigate(this.screenshotsDir()));
 		UiKit.button(graphics, this.font, x + width - 136, buttonY, 60, 16, Component.literal("Images"), mouseX, mouseY, false);
 		this.addClick(x + width - 136, buttonY, 60, 16, () -> this.navigate(this.imagesDir()));
@@ -121,7 +146,7 @@ public class ImagePickerScreen extends Screen {
 		this.addClick(x + width - 72, buttonY, 62, 16, () -> this.minecraft.setScreen(this.parent));
 
 		int gridX = x + 8;
-		int gridY = y + 40;
+		int gridY = y + 46;
 		int columns = Math.max(1, (width - 16) / CELL_W);
 		int cellIndex = 0;
 
@@ -170,8 +195,10 @@ public class ImagePickerScreen extends Screen {
 			graphics.drawString(this.font, "or use the Shots button for screenshots.", x + 12, gridY + 28, UiKit.TEXT_FAINT, false);
 		}
 
-		graphics.drawString(this.font, "Tip: you can also drag and drop an image file onto the game window.",
-				x + 10, y + height - 14, UiKit.TEXT_FAINT, false);
+		graphics.drawString(this.font, this.status == null
+						? "Tip: paste a folder above, or drag and drop an image file onto the game window."
+						: this.status,
+				x + 10, y + height - 14, this.status == null ? UiKit.TEXT_FAINT : UiKit.BAD, false);
 	}
 
 	private void drawCell(GuiGraphics graphics, int x, int y, String label, Identifier texture, int[] textureSize,
@@ -219,6 +246,40 @@ public class ImagePickerScreen extends Screen {
 		});
 	}
 
+	/** Applies whatever is typed in the path box: a folder to browse, or an image to send directly. */
+	private void applyTypedPath() {
+		if (this.pathBox == null) {
+			return;
+		}
+		String raw = this.pathBox.getValue().trim();
+		if (raw.length() > 1 && raw.startsWith("\"") && raw.endsWith("\"")) {
+			raw = raw.substring(1, raw.length() - 1);
+		}
+		if (raw.isEmpty()) {
+			return;
+		}
+		try {
+			Path target = Path.of(raw);
+			if (Files.isRegularFile(target)) {
+				if (ImageUtil.looksLikeImage(target)) {
+					this.onPick.accept(target);
+					this.minecraft.setScreen(this.parent);
+				} else {
+					this.status = "That file is not an image";
+				}
+				return;
+			}
+			if (Files.isDirectory(target)) {
+				this.status = null;
+				this.navigate(target);
+				return;
+			}
+			this.status = "No such folder or file";
+		} catch (RuntimeException exception) {
+			this.status = "Invalid path";
+		}
+	}
+
 	private void navigate(Path target) {
 		this.directory = target;
 		this.refresh();
@@ -242,6 +303,12 @@ public class ImagePickerScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(KeyEvent event) {
+		if (event.key() == GLFW.GLFW_KEY_ENTER || event.key() == GLFW.GLFW_KEY_KP_ENTER) {
+			if (this.pathBox != null && this.pathBox.isFocused()) {
+				this.applyTypedPath();
+				return true;
+			}
+		}
 		if (event.key() == GLFW.GLFW_KEY_ESCAPE) {
 			this.minecraft.setScreen(this.parent);
 			return true;
