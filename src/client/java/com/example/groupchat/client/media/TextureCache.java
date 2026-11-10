@@ -89,14 +89,16 @@ public final class TextureCache {
 		this.failures.clear();
 	}
 
+	/** Identifier paths must be lowercase and may only contain {@code [a-z0-9/._-]}. */
 	private static String sanitize(String imageId) {
 		StringBuilder builder = new StringBuilder(imageId.length());
 		for (int i = 0; i < imageId.length() && builder.length() < 40; i++) {
-			char character = imageId.charAt(i);
-			if (Character.isLetterOrDigit(character) || character == '-' || character == '_') {
+			char character = Character.toLowerCase(imageId.charAt(i));
+			if ((character >= 'a' && character <= 'z') || (character >= '0' && character <= '9')
+					|| character == '-' || character == '_') {
 				builder.append(character);
 			}
 		}
-		return builder.toString();
+		return builder.length() == 0 ? "image" : builder.toString();
 	}
 }

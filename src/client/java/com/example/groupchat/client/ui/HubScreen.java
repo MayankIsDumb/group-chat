@@ -7,6 +7,8 @@ import com.example.groupchat.client.media.ImageUtil;
 import com.example.groupchat.client.media.StickerAssets;
 import com.example.groupchat.client.media.TextureCache;
 import com.example.groupchat.client.voice.VoiceClient;
+import com.example.groupchat.client.waypoint.SharedLocation;
+import com.example.groupchat.client.waypoint.WaypointManager;
 import com.example.groupchat.net.Payloads;
 import com.example.groupchat.net.Payloads.GroupDto;
 import com.example.groupchat.net.Payloads.InviteDto;
@@ -150,10 +152,11 @@ public class HubScreen extends Screen {
 
 	private void layoutWidgets() {
 		int by = this.composerTop() + 6;
-		int buttonW = 34;
-		int iconW = 24;
+		int buttonW = 32;
+		int iconW = 22;
+		int coordsW = 46;
 		int x = this.rightX() + 6;
-		int width = this.rightW() - 12 - buttonW - iconW * 2 - 12;
+		int width = this.rightW() - 12 - buttonW - iconW * 2 - coordsW - 12;
 		if (this.composer != null) {
 			this.composer.setX(x);
 			this.composer.setY(by);
@@ -363,11 +366,13 @@ public class HubScreen extends Screen {
 
 		// composer buttons
 		int composerY = this.composerTop() + 6;
-		int sendW = 34;
-		int iconW = 24;
+		int sendW = 32;
+		int iconW = 22;
+		int coordsW = 46;
 		int sendX = x + width - 6 - sendW;
 		int stickerX = sendX - 4 - iconW;
 		int imageX = stickerX - 4 - iconW;
+		int coordsX = imageX - 4 - coordsW;
 		boolean canSend = !this.composer.getValue().isBlank();
 		UiKit.button(graphics, this.font, sendX, composerY, sendW, 16, Component.literal("Send"), mouseX, mouseY, true, canSend);
 		this.addClick(sendX, composerY, sendW, 16, this::sendText);
@@ -375,6 +380,11 @@ public class HubScreen extends Screen {
 		this.addClick(imageX, composerY, iconW, 16, () -> this.minecraft.setScreen(new ImagePickerScreen(this, this::sendImageFile)));
 		UiKit.button(graphics, this.font, stickerX, composerY, iconW, 16, Component.literal("Stk"), mouseX, mouseY, false);
 		this.addClick(stickerX, composerY, iconW, 16, () -> this.minecraft.setScreen(new StickerPickerScreen(this, this::sendSticker)));
+		boolean canShare = this.minecraft != null && this.minecraft.player != null;
+		UiKit.button(graphics, this.font, coordsX, composerY, coordsW, 16, Component.literal("Coords"), mouseX, mouseY, false, canShare);
+		if (canShare) {
+			this.addClick(coordsX, composerY, coordsW, 16, this::sendLocation);
+		}
 
 	}
 
@@ -521,6 +531,7 @@ public class HubScreen extends Screen {
 		return switch (message.kind()) {
 			case MessageDto.KIND_SYSTEM -> 16;
 			case MessageDto.KIND_STICKER -> 76;
+			case MessageDto.KIND_LOCATION -> 50;
 			case MessageDto.KIND_IMAGE -> {
 				int[] size = this.thumbSize(message.imageId(), Math.min(width - 70, 260), 190);
 				yield size[1] + 24;
@@ -547,6 +558,7 @@ public class HubScreen extends Screen {
 		int contentY = y + 13;
 		switch (message.kind()) {
 			case MessageDto.KIND_IMAGE -> this.drawImage(graphics, message, x, contentY, width, mouseX, mouseY);
+			case MessageDto.KIND_LOCATION -> this.drawLocation(graphics, message, x, contentY, width, mouseX, mouseY);
 			case MessageDto.KIND_STICKER -> {
 				UiKit.fill(graphics, x - 2, contentY - 2, 68, 68, 0x30000000);
 				UiKit.blitTexture(graphics, StickerAssets.texture(message.text()), x + 1, contentY + 1, 64, 64, 128, 128);
@@ -575,6 +587,47 @@ public class HubScreen extends Screen {
 		UiKit.blitTexture(graphics, entry.location(), x, y, size[0], size[1], entry.width(), entry.height());
 		final String imageId = message.imageId();
 		this.addClick(x, y, size[0], size[1], () -> this.zoomImageId = imageId);
+	}
+
+	private void drawLocation(GuiGraphics graphics, MessageDto message, int x, int y, int width, int mouseX, int mouseY) {
+		SharedLocation location = SharedLocation.parse(message.text());
+		if (location == null) {
+			graphics.drawString(this.font, message.text(), x, y, UiKit.TEXT, false);
+			return;
+		}
+		int boxWidth = Math.min(width - 70, 214);
+		boolean hover = UiKit.hovered(x - 2, y - 2, boxWidth + 4, 36, mouseX, mouseY);
+		UiKit.fill(graphics, x - 2, y - 2, boxWidth + 4, 36, hover ? 0x554B3FE0 : 0x26FFFFFF);
+		UiKit.outline(graphics, x - 2, y - 2, boxWidth + 4, 36, hover ? UiKit.ACCENT : UiKit.BORDER);
+		// little map pin
+		UiKit.fill(graphics, x + 5, y + 3, 8, 8, UiKit.ACCENT);
+		UiKit.fill(graphics, x + 7, y + 11, 4, 3, UiKit.ACCENT);
+		graphics.drawString(this.font, location.pretty(), x + 17, y + 1, UiKit.TEXT, false);
+		double distance = location.distanceFrom(this.minecraft);
+		String meta = location.dimensionLabel() + (distance >= 0 ? "  ·  " + Math.round(distance) + " m away" : "  ·  other dimension");
+		graphics.drawString(this.font, UiKit.trim(this.font, meta, boxWidth - 20), x + 17, y + 11, UiKit.TEXT_DIM, false);
+		String hint = hover ? "> click to create waypoint" : "click to create waypoint";
+		graphics.drawString(this.font, UiKit.trim(this.font, hint, boxWidth - 20), x + 17, y + 21, hover ? UiKit.ACCENT : UiKit.TEXT_FAINT, false);
+		this.addClick(x - 2, y - 2, boxWidth + 4, 36, () -> this.createWaypoint(message, location));
+	}
+
+	private void createWaypoint(MessageDto message, SharedLocation location) {
+		GroupDto group = this.state.group(message.groupId());
+		WaypointManager.Waypoint added = WaypointManager.INSTANCE.addFromMessage(message,
+				group == null ? "" : group.name());
+		this.status(added == null ? "Waypoint already exists here" : "Waypoint added: " + location.pretty());
+	}
+
+	private void sendLocation() {
+		GroupDto group = this.state.activeGroup();
+		if (group == null || this.minecraft == null || this.minecraft.player == null) {
+			return;
+		}
+		SharedLocation location = SharedLocation.of(this.minecraft.player);
+		ClientPlayNetworking.send(new Payloads.SendLocation(group.id(), location.dimension(), location.x(),
+				location.y(), location.z()));
+		this.status("Coordinates shared with #" + group.name());
+		this.scroll = 0;
 	}
 
 	private int[] thumbSize(String imageId, int maxWidth, int maxHeight) {

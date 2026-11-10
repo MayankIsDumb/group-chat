@@ -28,6 +28,7 @@ public final class Protocol {
 		c2s.register(Payloads.KickMember.TYPE, Payloads.KickMember.CODEC);
 		c2s.register(Payloads.SendText.TYPE, Payloads.SendText.CODEC);
 		c2s.register(Payloads.SendSticker.TYPE, Payloads.SendSticker.CODEC);
+		c2s.register(Payloads.SendLocation.TYPE, Payloads.SendLocation.CODEC);
 		c2s.registerLarge(Payloads.UploadImage.TYPE, Payloads.UploadImage.CODEC, Constants.LARGE_PAYLOAD_CHUNK);
 		c2s.register(Payloads.RequestImage.TYPE, Payloads.RequestImage.CODEC);
 		c2s.register(Payloads.CallJoin.TYPE, Payloads.CallJoin.CODEC);

@@ -3,11 +3,17 @@ package com.example.groupchat.client;
 import com.example.groupchat.client.dev.DebugHarness;
 import com.example.groupchat.client.media.TextureCache;
 import com.example.groupchat.client.ui.HubScreen;
+import com.example.groupchat.client.ui.WaypointsScreen;
+import com.example.groupchat.client.waypoint.WaypointHud;
+import com.example.groupchat.client.waypoint.WaypointManager;
 import com.example.groupchat.client.voice.VoiceClient;
 import com.example.groupchat.net.Payloads;
 import com.example.groupchat.net.Payloads.GroupDto;
 import com.example.groupchat.net.Payloads.MessageDto;
+import com.example.groupchat.Constants;
 import com.mojang.blaze3d.platform.InputConstants;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.minecraft.resources.Identifier;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -37,6 +43,7 @@ public class GroupChatClient implements ClientModInitializer {
 
 	private static KeyMapping openKey;
 	private static KeyMapping talkKey;
+	private static KeyMapping waypointKey;
 
 	@Override
 	public void onInitializeClient() {
@@ -45,9 +52,14 @@ public class GroupChatClient implements ClientModInitializer {
 		this.registerReceivers();
 
 		openKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.groupchat.open",
-				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, KeyMapping.Category.MULTIPLAYER));
+				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_V, KeyMapping.Category.MULTIPLAYER));
 		talkKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.groupchat.talk",
 				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_N, KeyMapping.Category.MULTIPLAYER));
+		waypointKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.groupchat.waypoints",
+				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B, KeyMapping.Category.MULTIPLAYER));
+
+		WaypointManager.INSTANCE.ensureLoaded();
+		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(Constants.MOD_ID, "waypoints"), new WaypointHud());
 
 		ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> this.onDisconnect());
@@ -102,6 +114,11 @@ public class GroupChatClient implements ClientModInitializer {
 				client.setScreen(new HubScreen(client.screen));
 			}
 		}
+		while (waypointKey.consumeClick()) {
+			if (client.player != null && !(client.screen instanceof WaypointsScreen)) {
+				client.setScreen(new WaypointsScreen(client.screen));
+			}
+		}
 		this.voice.setTalking(talkKey.isDown());
 		this.voice.tick();
 		this.dropCallIfKicked();
@@ -140,6 +157,12 @@ public class GroupChatClient implements ClientModInitializer {
 		String preview = switch (message.kind()) {
 			case MessageDto.KIND_IMAGE -> "[image]";
 			case MessageDto.KIND_STICKER -> "[sticker]";
+			case MessageDto.KIND_LOCATION -> {
+				com.example.groupchat.client.waypoint.SharedLocation location =
+						com.example.groupchat.client.waypoint.SharedLocation.parse(message.text());
+				yield location == null ? "[coordinates]"
+						: "shared coords " + location.pretty() + " (" + location.dimensionLabel() + ")";
+			}
 			default -> message.text();
 		};
 		Component line = Component.literal("#" + groupName + " ").withStyle(ChatFormatting.LIGHT_PURPLE)

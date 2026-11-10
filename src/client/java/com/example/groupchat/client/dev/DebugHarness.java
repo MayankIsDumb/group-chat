@@ -40,6 +40,7 @@ public final class DebugHarness {
 	private static final String DEMO_IMAGE_ID = "dev_demo_image";
 	private static final String CONNECT = System.getProperty("groupchat.devtools.connect", "").trim();
 	private static final boolean VOICE_TEST = Boolean.getBoolean("groupchat.devtools.voicetest");
+	private static final String AGENT = System.getProperty("groupchat.devtools.agent", "").trim().toLowerCase();
 
 	private static int phase;
 	private static int phaseTicks;
@@ -53,7 +54,11 @@ public final class DebugHarness {
 		if (!Boolean.getBoolean("groupchat.devtools")) {
 			return;
 		}
-		GroupChatClient.LOGGER.warn("[groupchat] devtools enabled (connect='{}')", CONNECT);
+		GroupChatClient.LOGGER.warn("[groupchat] devtools enabled (connect='{}', agent='{}')", CONNECT, AGENT);
+		if (!AGENT.isEmpty()) {
+			AgentScenario.init(AGENT);
+			return;
+		}
 		ClientTickEvents.END_CLIENT_TICK.register(DebugHarness::tick);
 	}
 
@@ -83,7 +88,7 @@ public final class DebugHarness {
 
 	private static void tickOffline(Minecraft client) {
 		phaseTicks++;
-		if (phase >= 2 && !(client.screen instanceof HubScreen)) {
+		if (phase >= 2 && phase <= 5 && !(client.screen instanceof HubScreen)) {
 			// the title screen reinstalls itself once the Realms availability check finishes
 			client.setScreen(hub);
 		}
@@ -142,6 +147,16 @@ public final class DebugHarness {
 			case 6 -> {
 				if (phaseTicks == 18) {
 					shot(client, 5);
+				} else if (phaseTicks > 30) {
+					log("open waypoints screen");
+					client.setScreen(new com.example.groupchat.client.ui.WaypointsScreen(null));
+					phase = 7;
+					phaseTicks = 0;
+				}
+			}
+			case 7 -> {
+				if (phaseTicks == 18) {
+					shot(client, 6);
 				} else if (phaseTicks > 30) {
 					log("done, stopping client");
 					client.stop();
@@ -296,7 +311,9 @@ public final class DebugHarness {
 						"did you see the new base? i moved storage downstairs", "", now - 900_000L),
 				new MessageDto("d2", "demo1", "You", MessageDto.KIND_TEXT,
 						"yeah, the shulker wall looks great", "", now - 840_000L),
-				new MessageDto("d3", "demo1", "Alex", MessageDto.KIND_STICKER, "creeper", "", now - 600_000L),
+				new MessageDto("d3", "demo1", "Steve", MessageDto.KIND_LOCATION,
+						"minecraft:overworld|412.0|71.0|-238.5", "", now - 720_000L),
+				new MessageDto("d3b", "demo1", "Alex", MessageDto.KIND_STICKER, "creeper", "", now - 600_000L),
 				new MessageDto("d4", "demo1", "Steve", MessageDto.KIND_IMAGE, "", DEMO_IMAGE_ID, now - 300_000L),
 				new MessageDto("d5", "demo1", "", MessageDto.KIND_SYSTEM, "Herobrine left the group", "", now - 90_000L)));
 		state.addMessage(new MessageDto("d6", "demo1", "Steve", MessageDto.KIND_TEXT,
@@ -306,6 +323,14 @@ public final class DebugHarness {
 		if (demo != null) {
 			GroupChatClient.INSTANCE.textures.accept(DEMO_IMAGE_ID, demo);
 		}
+
+		// a waypoint as if the player had clicked Steve's shared coordinates
+		com.example.groupchat.client.waypoint.WaypointManager.INSTANCE.add(
+				new com.example.groupchat.client.waypoint.SharedLocation("minecraft:overworld", 412.0D, 71.0D, -238.5D),
+				"Steve's spot · #survival squad", 0xFF89DDFF);
+		com.example.groupchat.client.waypoint.WaypointManager.INSTANCE.add(
+				new com.example.groupchat.client.waypoint.SharedLocation("minecraft:overworld", -180.0D, 64.0D, 320.0D),
+				"Alex's spot", 0xFFF7C873);
 	}
 
 	private static byte[] demoImage() {

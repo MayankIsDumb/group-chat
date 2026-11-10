@@ -92,6 +92,8 @@ public final class Payloads {
 		public static final int KIND_IMAGE = 1;
 		public static final int KIND_STICKER = 2;
 		public static final int KIND_SYSTEM = 3;
+		/** Coordinates shared with one click; {@code text} holds {@code dimension|x|y|z}. */
+		public static final int KIND_LOCATION = 4;
 	}
 
 	static void writeMessage(FriendlyByteBuf buf, MessageDto message) {
@@ -315,6 +317,24 @@ public final class Payloads {
 					byte[] data = buf.readByteArray(Constants.VOICE_MAX_FRAME_BYTES);
 					return new VoiceFrame(groupId, data, seq);
 				});
+
+		@Override
+		public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	public record SendLocation(String groupId, String dimension, double x, double y, double z) implements CustomPacketPayload {
+		public static final CustomPacketPayload.Type<SendLocation> TYPE = packetType("c2s/location");
+		public static final StreamCodec<RegistryFriendlyByteBuf, SendLocation> CODEC = codec(
+				(buf, payload) -> {
+					buf.writeUtf(payload.groupId(), 40);
+					buf.writeUtf(payload.dimension(), 64);
+					buf.writeDouble(payload.x());
+					buf.writeDouble(payload.y());
+					buf.writeDouble(payload.z());
+				},
+				buf -> new SendLocation(buf.readUtf(40), buf.readUtf(64), buf.readDouble(), buf.readDouble(), buf.readDouble()));
 
 		@Override
 		public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {

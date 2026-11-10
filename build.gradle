@@ -22,6 +22,7 @@ loom {
 			// ./gradlew runClient -PgcDevtools=true -PgcConnect=127.0.0.1:25565 joins a server
 			property("groupchat.devtools.connect", (project.findProperty("gcConnect") ?: "").toString())
 			property("groupchat.devtools.voicetest", (project.findProperty("gcVoiceTest") ?: "false").toString())
+			property("groupchat.devtools.agent", (project.findProperty("gcAgent") ?: "").toString())
 		}
 		server {
 			vmArg "-Xmx700M"
@@ -88,3 +89,4 @@ publishing {
 		// retrieving dependencies.
 	}
 }
+

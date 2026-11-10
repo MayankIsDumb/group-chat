@@ -158,6 +158,31 @@ public final class ServerNet {
 			manager.post(group, self, MessageDto.KIND_STICKER, stickerId, "");
 		});
 
+		ServerPlayNetworking.registerGlobalReceiver(Payloads.SendLocation.TYPE, (payload, context) -> {
+			GroupManager manager = GroupManager.get();
+			ServerPlayer player = context.player();
+			if (manager == null) {
+				return;
+			}
+			String self = self(player);
+			GroupData group = manager.find(self, payload.groupId());
+			if (group == null) {
+				return;
+			}
+			if (!manager.rates().allow(self, "text", Constants.RATE_TEXT_PER_10S, 10_000L)) {
+				return;
+			}
+			String dimension = payload.dimension() == null ? "" : payload.dimension().trim();
+			if (!dimension.matches("[a-z0-9_.:/-]{1,64}")) {
+				dimension = "minecraft:overworld";
+			}
+			double x = clampCoordinate(payload.x());
+			double y = clampCoordinate(payload.y());
+			double z = clampCoordinate(payload.z());
+			String text = dimension + "|" + round(x) + "|" + round(y) + "|" + round(z);
+			manager.post(group, self, MessageDto.KIND_LOCATION, text, "");
+		});
+
 		ServerPlayNetworking.registerGlobalReceiver(Payloads.UploadImage.TYPE, (payload, context) -> {
 			GroupManager manager = GroupManager.get();
 			ServerPlayer player = context.player();
@@ -174,7 +199,8 @@ public final class ServerNet {
 				notice(player, "You are sending images too quickly.", true);
 				return;
 			}
-			String imageId = payload.imageId() == null ? "" : payload.imageId().replaceAll("[^A-Za-z0-9_-]", "");
+			String imageId = payload.imageId() == null ? ""
+					: payload.imageId().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_-]", "");
 			if (imageId.isEmpty() || imageId.length() > 40) {
 				notice(player, "Invalid image.", true);
 				return;
@@ -253,5 +279,16 @@ public final class ServerNet {
 
 	static String self(ServerPlayer player) {
 		return player.getGameProfile().name();
+	}
+
+	private static double clampCoordinate(double value) {
+		if (Double.isNaN(value) || Double.isInfinite(value)) {
+			return 0.0D;
+		}
+		return Math.max(-30_000_000.0D, Math.min(30_000_000.0D, value));
+	}
+
+	private static String round(double value) {
+		return Double.toString(Math.round(value * 10.0D) / 10.0D);
 	}
 }

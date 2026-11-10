@@ -18,6 +18,8 @@ owns groups, membership, invites, history and images.
 | **Chat GUI** | `G` opens a two-pane hub: group list, unread badges, message bubbles, timestamps, scrolling |
 | **Images** | send PNG/JPG/GIF/BMP — drag & drop onto the window, the built-in image browser, or copy them into `config/groupchat/images` |
 | **Stickers** | bundled pack (`smile`, `laugh`, `sad`, `cool`, `heart`, `star`, `creeper`, `diamond`, `party`) |
+| **Share coordinates** | one **Coords** button posts your position + dimension; **click the message to turn it into a waypoint** |
+| **Waypoints** | client-side list (`B`), live HUD with distance + compass bearing, persisted in `config/groupchat/waypoints.json` |
 | **Voice calls** | push-to-talk voice channels per group, mixed so several people can talk at once |
 | **Notifications** | new messages are echoed to the chat HUD with a sound when the hub is closed |
 | **Persistence** | groups + history are stored in the world folder, images on disk, all survive restarts |
@@ -42,13 +44,16 @@ Grab the build with:
 
 | Action | How |
 | --- | --- |
-| Open the hub | `G` (rebindable: Options → Controls → Multiplayer) |
+| Open the hub | `V` (rebindable: Options → Controls → Multiplayer) |
 | Create a group | `+ New group` in the sidebar → name it → tick players → `Create` |
 | Invite someone | `Members` → type a name → `Invite`, or `/gchat invite <player> <group>` |
 | Accept an invite | `Invites (n)` in the sidebar → `Accept` |
 | Send a message | type in the box, `Enter` |
 | Send an image | `Img` (built-in browser) or **drag & drop** an image file on the window |
 | Send a sticker | `Stk` |
+| Share coordinates | `Coords` — posts your position to the group |
+| Create a waypoint | **click a shared-coordinate message** in chat |
+| Waypoint list | `B` |
 | Voice | `Start call` / `Join call` in the header, then **hold `N`** to talk |
 | Mute / leave | `Leave call` in the header (also mutes the mic for others) |
 | Switch group | `Tab`, or click in the sidebar |
@@ -58,6 +63,23 @@ Messages written with `/gchat msg <group> <text>` are relayed like normal ones, 
 without opening the GUI.
 
 ![Members panel](docs/screenshot-members.png)
+
+### Sharing coordinates → waypoints
+
+1. Stand somewhere interesting and press **`Coords`** in the composer. The group instantly gets a
+   message like `141, -60, -179 · Overworld · 580 m away`.
+2. Anyone in the group **clicks that message** and a waypoint appears in their own list.
+3. Waypoints show up in the top-right HUD with distance and compass bearing
+   (`AgentA's spot · #expedition  580m NE`), and in the `B` screen where you can hide, delete or add
+   the spot you are standing on.
+
+![A second player's view of shared coordinates, a fetched screenshot and the waypoint bubble](docs/screenshot-two-players.png)
+
+![Waypoint list](docs/screenshot-waypoints.png)
+![Waypoint HUD](docs/screenshot-hud.png)
+
+Waypoints are per-client: the server only relays the coordinate message, so each player decides
+what to keep. Clicking the same message twice does nothing (duplicates within 2 blocks are ignored).
 
 ### Voice chat details
 
@@ -84,6 +106,8 @@ without opening the GUI.
 
 ## Limits & storage
 
+Client waypoints: `config/groupchat/waypoints.json`.
+
 Server: `<world>/groupchat/groups.json` (groups, members, invites, last 200 messages per group)
 and `<world>/groupchat/images/<groupId>/<imageId>.png` (max 96 images per group; the oldest are
 evicted). Client: nothing is written outside `config/groupchat/images` (a drop folder).
@@ -109,6 +133,9 @@ client                        server (or integrated server)
                           Voice relay (call members only)
 ```
 
+* **Coordinate sharing** — `SendLocation` (C2S) is validated and clamped server-side, then stored as
+  a normal message with kind `KIND_LOCATION` whose text is `dimension|x|y|z`, so coordinate messages
+  survive history replay without any extra protocol state.
 * **Transport** — one Fabric networking channel. Payload records live in `net/Payloads.java`,
   registered in `net/Protocol.java`. Image payloads use `registerLarge` so a 1.5 MB PNG is split
   into 30 KB packets automatically.
@@ -146,11 +173,20 @@ verify the GUI and the protocol without clicking around:
 # screenshots the result -> run/groupchat-dev-9.png
 ./gradlew runServer                      # in one terminal (online-mode=false)
 ./gradlew runClient -PgcDevtools=true -PgcConnect=127.0.0.1:25565
+
+# Two scripted players in one dedicated server (see run-agents/*.bat):
+#   agent A: joins, teleports away, creates "expedition", invites B, chats, shares coords,
+#            uploads a real in-game screenshot
+#   agent B: accepts the invite, clicks A's coordinates into a waypoint, replies with its own
+#            coordinates, screenshots the waypoint HUD
+./gradlew runClient -PgcDevtools=true -PgcAgent=a -PgcConnect=127.0.0.1:25565
+./gradlew runClient -PgcDevtools=true -PgcAgent=b -PgcConnect=127.0.0.1:25565
 ```
 
 Verified with those: hub rendering, image scaling, sticker rendering, group creation, text and
-sticker relay, image upload (large-payload splitting), server-side persistence, and
-ADPCM round trip at ~22 dB SNR.
+sticker relay, image upload (large-payload splitting), server-side persistence, ADPCM round trip at
+~22 dB SNR, and a full two-client session (A → server → B) for chat, coordinate sharing, waypoint
+creation and cross-client image download.
 
 ## Known limitations
 
@@ -160,4 +196,6 @@ ADPCM round trip at ~22 dB SNR.
 * History is capped at 200 messages per group (oldest are dropped, including image references).
 * Stickers are the bundled pack; custom stickers are sent as regular images.
 * Voice volume is fixed (per-member sliders are on the roadmap).
+* Waypoints are HUD/list only — no in-world beam or minimap yet, and they are not shared between
+  players (each player creates their own from the coordinate message).
 * The server operator can read stored messages and images — same as any server-side chat mod.
