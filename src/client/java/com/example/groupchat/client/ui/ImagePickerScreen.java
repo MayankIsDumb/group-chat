@@ -1,0 +1,266 @@
+package com.example.groupchat.client.ui;
+
+import com.example.groupchat.Constants;
+import com.example.groupchat.client.media.ImageUtil;
+import com.mojang.blaze3d.platform.NativeImage;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Consumer;
+import java.util.stream.Stream;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
+import net.minecraft.util.Util;
+import org.lwjgl.glfw.GLFW;
+
+/**
+ * A tiny built-in image browser (no native file dialog, no AWT window) for the two folders players
+ * actually use: {@code .minecraft/screenshots} and {@code config/groupchat/images}.
+ */
+public class ImagePickerScreen extends Screen {
+	private static final int CELL_W = 78;
+	private static final int CELL_H = 86;
+	private static final int THUMB = 64;
+
+	private record Click(int x, int y, int width, int height, Runnable action) {
+	}
+
+	private final Screen parent;
+	private final Consumer<Path> onPick;
+	private final List<Click> clicks = new ArrayList<>();
+	private final List<Path> folders = new ArrayList<>();
+	private final List<Path> images = new ArrayList<>();
+	private final Map<Path, Identifier> thumbnails = new LinkedHashMap<>();
+	private final Map<Path, int[]> thumbSizes = new LinkedHashMap<>();
+	private final Map<Path, String> thumbErrors = new LinkedHashMap<>();
+	private Path directory;
+	private int serial;
+
+	public ImagePickerScreen(Screen parent, Consumer<Path> onPick) {
+		super(Component.literal("Send image"));
+		this.parent = parent;
+		this.onPick = onPick;
+	}
+
+	@Override
+	protected void init() {
+		if (this.directory == null) {
+			this.directory = imagesDir();
+		}
+		this.refresh();
+	}
+
+	private Path imagesDir() {
+		Path dir = this.minecraft.gameDirectory.toPath().resolve("config").resolve(Constants.MOD_ID).resolve("images");
+		try {
+			Files.createDirectories(dir);
+		} catch (IOException ignored) {
+		}
+		return dir;
+	}
+
+	private Path screenshotsDir() {
+		return this.minecraft.gameDirectory.toPath().resolve("screenshots");
+	}
+
+	private void refresh() {
+		this.clicks.clear();
+		this.folders.clear();
+		this.images.clear();
+		if (this.directory == null || !Files.isDirectory(this.directory)) {
+			return;
+		}
+		try (Stream<Path> stream = Files.list(this.directory)) {
+			List<Path> all = stream.toList();
+			for (Path path : all) {
+				if (Files.isDirectory(path)) {
+					this.folders.add(path);
+				} else if (ImageUtil.looksLikeImage(path)) {
+					this.images.add(path);
+				}
+			}
+		} catch (IOException ignored) {
+		}
+		this.folders.sort(Comparator.comparing(path -> path.getFileName().toString().toLowerCase()));
+		this.images.sort(Comparator.comparing(path -> path.getFileName().toString().toLowerCase()));
+	}
+
+	@Override
+	public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+		graphics.fill(0, 0, this.width, this.height, 0xD008080C);
+	}
+
+	@Override
+	public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+		int x = 10;
+		int y = 10;
+		int width = this.width - 20;
+		int height = this.height - 20;
+		UiKit.panel(graphics, x, y, width, height);
+
+		graphics.drawString(this.font, "Send an image", x + 10, y + 9, UiKit.TEXT, false);
+		graphics.drawString(this.font, UiKit.trim(this.font, this.directory == null ? "" : this.directory.toString(), width - 130),
+				x + 10, y + 22, UiKit.TEXT_FAINT, false);
+
+		int buttonY = y + 6;
+		UiKit.button(graphics, this.font, x + width - 200, buttonY, 60, 16, Component.literal("Shots"), mouseX, mouseY, false);
+		this.addClick(x + width - 200, buttonY, 60, 16, () -> this.navigate(this.screenshotsDir()));
+		UiKit.button(graphics, this.font, x + width - 136, buttonY, 60, 16, Component.literal("Images"), mouseX, mouseY, false);
+		this.addClick(x + width - 136, buttonY, 60, 16, () -> this.navigate(this.imagesDir()));
+		UiKit.button(graphics, this.font, x + width - 72, buttonY, 62, 16, Component.literal("Cancel"), mouseX, mouseY, false);
+		this.addClick(x + width - 72, buttonY, 62, 16, () -> this.minecraft.setScreen(this.parent));
+
+		int gridX = x + 8;
+		int gridY = y + 40;
+		int columns = Math.max(1, (width - 16) / CELL_W);
+		int cellIndex = 0;
+
+		Path up = this.directory == null ? null : this.directory.getParent();
+		if (up != null) {
+			this.drawCell(graphics, gridX, gridY, "..", null, null, mouseX, mouseY, () -> this.navigate(up));
+			cellIndex++;
+		}
+		for (Path folder : this.folders) {
+			int column = cellIndex % columns;
+			int row = cellIndex / columns;
+			int cellX = gridX + column * CELL_W;
+			int cellY = gridY + row * CELL_H;
+			if (cellY + CELL_H > y + height - 10) {
+				break;
+			}
+			this.drawCell(graphics, cellX, cellY, folder.getFileName().toString(), null, null, mouseX, mouseY,
+					() -> this.navigate(folder));
+			cellIndex++;
+		}
+		for (Path image : this.images) {
+			int column = cellIndex % columns;
+			int row = cellIndex / columns;
+			int cellX = gridX + column * CELL_W;
+			int cellY = gridY + row * CELL_H;
+			if (cellY + CELL_H > y + height - 10) {
+				break;
+			}
+			this.ensureThumbnail(image);
+			Identifier texture = this.thumbnails.get(image);
+			String error = this.thumbErrors.get(image);
+			this.drawCell(graphics, cellX, cellY, image.getFileName().toString(), texture, this.thumbSizes.get(image),
+					mouseX, mouseY, () -> {
+				this.onPick.accept(image);
+				this.minecraft.setScreen(this.parent);
+			});
+			if (error != null) {
+				graphics.drawString(this.font, "!", cellX + 4, cellY + 4, UiKit.BAD, false);
+			}
+			cellIndex++;
+		}
+
+		if (cellIndex == 0 || (this.folders.isEmpty() && this.images.isEmpty())) {
+			graphics.drawString(this.font, "No images here. Drop PNG/JPG files into", x + 12, gridY + 4, UiKit.TEXT_FAINT, false);
+			graphics.drawString(this.font, this.imagesDir().toString(), x + 12, gridY + 16, UiKit.TEXT_DIM, false);
+			graphics.drawString(this.font, "or use the Shots button for screenshots.", x + 12, gridY + 28, UiKit.TEXT_FAINT, false);
+		}
+
+		graphics.drawString(this.font, "Tip: you can also drag and drop an image file onto the game window.",
+				x + 10, y + height - 14, UiKit.TEXT_FAINT, false);
+	}
+
+	private void drawCell(GuiGraphics graphics, int x, int y, String label, Identifier texture, int[] textureSize,
+			int mouseX, int mouseY, Runnable action) {
+		boolean hover = UiKit.hovered(x, y, CELL_W - 4, CELL_H - 4, mouseX, mouseY);
+		UiKit.fill(graphics, x, y, CELL_W - 4, CELL_H - 4, hover ? 0x40FFFFFF : 0x22000000);
+		UiKit.outline(graphics, x, y, CELL_W - 4, CELL_H - 4, hover ? UiKit.ACCENT : UiKit.BORDER);
+		if (texture != null && textureSize != null) {
+			UiKit.blitTexture(graphics, texture, x + 4, y + 4, THUMB, THUMB, textureSize[0], textureSize[1]);
+		} else {
+			UiKit.fill(graphics, x + 4, y + 4, THUMB, THUMB, 0x30000000);
+			graphics.drawCenteredString(this.font, "folder", x + 4 + THUMB / 2, y + 4 + THUMB / 2 - 4, UiKit.TEXT_DIM);
+		}
+		graphics.drawString(this.font, UiKit.trim(this.font, label, CELL_W - 10), x + 4, y + THUMB + 8, UiKit.TEXT_DIM, false);
+		this.addClick(x, y, CELL_W - 4, CELL_H - 4, action);
+	}
+
+	private void ensureThumbnail(Path image) {
+		if (this.thumbnails.containsKey(image) || this.thumbErrors.containsKey(image)) {
+			return;
+		}
+		this.thumbnails.put(image, null);
+		Util.backgroundExecutor().execute(() -> {
+			try {
+				byte[] png = ImageUtil.thumbnail(image, THUMB);
+				this.minecraft.execute(() -> {
+					try {
+						NativeImage nativeImage = NativeImage.read(png);
+						Identifier location = Identifier.fromNamespaceAndPath(Constants.MOD_ID, "picker/thumb_" + (this.serial++));
+						this.minecraft.getTextureManager().register(location,
+								new DynamicTexture(() -> "groupchat picker thumbnail", nativeImage));
+						this.thumbnails.put(image, location);
+						this.thumbSizes.put(image, new int[]{nativeImage.getWidth(), nativeImage.getHeight()});
+					} catch (IOException exception) {
+						this.thumbErrors.put(image, exception.getMessage());
+						this.thumbnails.remove(image);
+					}
+				});
+			} catch (Exception exception) {
+				this.minecraft.execute(() -> {
+					this.thumbnails.remove(image);
+					this.thumbErrors.put(image, exception.getMessage());
+				});
+			}
+		});
+	}
+
+	private void navigate(Path target) {
+		this.directory = target;
+		this.refresh();
+	}
+
+	private void addClick(int x, int y, int width, int height, Runnable action) {
+		this.clicks.add(new Click(x, y, width, height, action));
+	}
+
+	@Override
+	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+		for (int i = this.clicks.size() - 1; i >= 0; i--) {
+			Click click = this.clicks.get(i);
+			if (UiKit.hovered(click.x(), click.y(), click.width(), click.height(), event.x(), event.y())) {
+				click.action().run();
+				return true;
+			}
+		}
+		return super.mouseClicked(event, doubleClick);
+	}
+
+	@Override
+	public boolean keyPressed(KeyEvent event) {
+		if (event.key() == GLFW.GLFW_KEY_ESCAPE) {
+			this.minecraft.setScreen(this.parent);
+			return true;
+		}
+		return super.keyPressed(event);
+	}
+
+	@Override
+	public void onClose() {
+		this.minecraft.setScreen(this.parent);
+	}
+
+	@Override
+	public void removed() {
+		for (Identifier location : this.thumbnails.values()) {
+			if (location != null) {
+				this.minecraft.getTextureManager().release(location);
+			}
+		}
+		this.thumbnails.clear();
+	}
+}

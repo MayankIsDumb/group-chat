@@ -14,8 +14,22 @@ repositories {
 loom {
 	splitEnvironmentSourceSets()
 
+	runs {
+		client {
+			vmArg "-Xmx1500M"
+			// ./gradlew runClient -PgcDevtools=true runs the scripted UI smoke test
+			property("groupchat.devtools", (project.findProperty("gcDevtools") ?: "false").toString())
+			// ./gradlew runClient -PgcDevtools=true -PgcConnect=127.0.0.1:25565 joins a server
+			property("groupchat.devtools.connect", (project.findProperty("gcConnect") ?: "").toString())
+			property("groupchat.devtools.voicetest", (project.findProperty("gcVoiceTest") ?: "false").toString())
+		}
+		server {
+			vmArg "-Xmx700M"
+		}
+	}
+
 	mods {
-		"mymod" {
+		"groupchat" {
 			sourceSet sourceSets.main
 			sourceSet sourceSets.client
 		}

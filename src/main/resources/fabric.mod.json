@@ -1,34 +1,23 @@
 {
 	"schemaVersion": 1,
-	"id": "mymod",
+	"id": "groupchat",
 	"version": "${version}",
-	"name": "My Mod",
-	"description": "A Fabric mod for Minecraft 1.21.11.",
+	"name": "Group Chat",
+	"description": "Discord-style group chats inside Minecraft: groups, invites, images, stickers and voice calls.",
 	"authors": [
-		"Me!"
+		"Group Chat"
 	],
-	"contact": {
-		"homepage": "https://fabricmc.net/",
-		"sources": "https://github.com/FabricMC/fabric-example-mod"
-	},
 	"license": "CC0-1.0",
-	"icon": "assets/mymod/icon.png",
+	"icon": "assets/groupchat/icon.png",
 	"environment": "*",
 	"entrypoints": {
 		"main": [
-			"com.example.mymod.MyMod"
+			"com.example.groupchat.GroupChat"
 		],
 		"client": [
-			"com.example.mymod.client.MyModClient"
+			"com.example.groupchat.client.GroupChatClient"
 		]
 	},
-	"mixins": [
-		"mymod.mixins.json",
-		{
-			"config": "mymod.client.mixins.json",
-			"environment": "client"
-		}
-	],
 	"depends": {
 		"fabricloader": ">=0.20.1",
 		"minecraft": "~1.21.11",
