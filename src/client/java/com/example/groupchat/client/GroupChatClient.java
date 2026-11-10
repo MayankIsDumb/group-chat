@@ -5,6 +5,7 @@ import com.example.groupchat.client.media.TextureCache;
 import com.example.groupchat.client.ui.HubScreen;
 import com.example.groupchat.client.ui.WaypointsScreen;
 import com.example.groupchat.client.waypoint.WaypointManager;
+import com.example.groupchat.client.waypoint.WaypointOverlay;
 import com.example.groupchat.client.waypoint.WaypointWorldRenderer;
 import com.example.groupchat.client.voice.VoiceClient;
 import com.example.groupchat.net.Payloads;
@@ -12,7 +13,10 @@ import com.example.groupchat.net.Payloads.GroupDto;
 import com.example.groupchat.net.Payloads.MessageDto;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
+import com.example.groupchat.Constants;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.minecraft.resources.Identifier;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -57,6 +61,8 @@ public class GroupChatClient implements ClientModInitializer {
 
 		WaypointManager.INSTANCE.ensureLoaded();
 		WaypointWorldRenderer.register();
+		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(Constants.MOD_ID, "waypoint_labels"),
+				new WaypointOverlay());
 
 		ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
 		ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> this.onDisconnect());
@@ -116,6 +122,7 @@ public class GroupChatClient implements ClientModInitializer {
 				client.setScreen(new WaypointsScreen(client.screen));
 			}
 		}
+		WaypointManager.INSTANCE.tick();
 		this.voice.setTalking(talkKey.isDown());
 		this.voice.tick();
 		this.dropCallIfKicked();

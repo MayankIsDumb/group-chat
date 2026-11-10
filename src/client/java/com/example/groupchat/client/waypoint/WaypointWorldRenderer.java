@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.ShapeRenderer;
+import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.client.renderer.rendertype.RenderTypes;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
@@ -19,8 +20,11 @@ import net.minecraft.world.phys.shapes.Shapes;
  * name tag with the distance. Replaces the old corner-of-the-screen list.
  */
 public final class WaypointWorldRenderer {
-	/** How tall the light column is, so a waypoint can be spotted from far away. */
-	private static final double BEAM_HEIGHT = 64.0D;
+	/** How tall the beacon beam is, so a waypoint can be spotted from far away. */
+	private static final int BEAM_HEIGHT = 320;
+	/** Beam cross-section, slightly thicker than a real beacon so it reads as a waypoint. */
+	private static final float BEAM_CORE_RADIUS = 0.6F;
+	private static final float BEAM_GLOW_RADIUS = 0.95F;
 
 	private WaypointWorldRenderer() {
 	}
@@ -58,12 +62,16 @@ public final class WaypointWorldRenderer {
 				continue;
 			}
 			int color = waypoint.color();
-			// marker cube around the spot
-			ShapeRenderer.renderShape(matrices, lines, Shapes.box(-0.4D, 0.0D, -0.4D, 0.4D, 1.8D, 0.4D),
+			// foot marker so it is obvious where to stand
+			ShapeRenderer.renderShape(matrices, lines, Shapes.box(-0.5D, 0.0D, -0.5D, 0.5D, 1.5D, 0.5D),
 					dx, dy, dz, color, 2.5F);
-			// light column so it is visible across the landscape
-			ShapeRenderer.renderShape(matrices, lines, Shapes.box(-0.1D, 1.8D, -0.1D, 0.1D, BEAM_HEIGHT, 0.1D),
-					dx, dy, dz, (color & 0x00FFFFFF) | 0x55000000, 1.5F);
+			// full beacon beam (same renderer/vanilla texture the beacon block uses)
+			matrices.pushPose();
+			matrices.translate(dx - 0.5D, dy, dz - 0.5D);
+			BeaconRenderer.submitBeaconBeam(matrices, context.commandQueue(), BeaconRenderer.BEAM_LOCATION,
+					1.0F, (float) client.level.getGameTime() + client.getDeltaTracker().getGameTimeDeltaPartialTick(false),
+					0, BEAM_HEIGHT, color, BEAM_CORE_RADIUS, BEAM_GLOW_RADIUS);
+			matrices.popPose();
 
 			double distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 			if (distance < 96.0D) {

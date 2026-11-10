@@ -45,6 +45,7 @@ public final class LiveSession {
 	private boolean greeted;
 	private boolean movingToWaypoint;
 	private boolean screenshotDone;
+	private boolean createdTestWaypoint;
 
 	private LiveSession(String role) {
 		this.role = role;
@@ -82,13 +83,16 @@ public final class LiveSession {
 		if (client.player == null || client.level == null) {
 			return;
 		}
-		if (client.screen instanceof PauseScreen) {
-			client.setScreen(null);
-		}
-		if (client.player.isDeadOrDying()) {
-			this.log("died, respawning");
-			client.player.respawn();
-			return;
+		// Only the scripted agent manipulates menus/death screens - the human keeps full control.
+		if (!this.role.equals("human")) {
+			if (client.screen instanceof PauseScreen) {
+				client.setScreen(null);
+			}
+			if (client.player.isDeadOrDying()) {
+				this.log("died, respawning");
+				client.player.respawn();
+				return;
+			}
 		}
 		this.ticks++;
 
@@ -174,6 +178,15 @@ public final class LiveSession {
 		}
 		List<WaypointManager.Waypoint> waypoints = WaypointManager.INSTANCE.all();
 		if (waypoints.isEmpty()) {
+			// nothing pinned yet: drop a throwaway waypoint so the beacon beam can be checked
+			if (this.createdTestWaypoint) {
+				return;
+			}
+			this.createdTestWaypoint = true;
+			SharedLocation here = SharedLocation.of(client.player);
+			WaypointManager.INSTANCE.add(new SharedLocation(here.dimension(), here.x() - 20.0D, here.y(),
+					here.z() - 14.0D), "beam test", 0xFFFFC94D);
+			this.log("created a throwaway waypoint to check the beam");
 			return;
 		}
 		WaypointManager.Waypoint target = waypoints.get(0);

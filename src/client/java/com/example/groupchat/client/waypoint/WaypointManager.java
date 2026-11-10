@@ -28,6 +28,8 @@ public final class WaypointManager {
 	public static final WaypointManager INSTANCE = new WaypointManager();
 
 	private static final int MAX_WAYPOINTS = 64;
+	/** Walking this close counts as "arrived" and clears the waypoint. */
+	private static final double ARRIVAL_RADIUS = 6.0D;
 
 	private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
 	private final List<Waypoint> waypoints = new ArrayList<>();
@@ -147,6 +149,42 @@ public final class WaypointManager {
 
 	public void clear() {
 		this.waypoints.clear();
+		this.save();
+	}
+
+	/**
+	 * Removes waypoints the player has walked into. Runs every client tick; the waypoint announces
+	 * itself in chat and plays a short sound when it disappears.
+	 */
+	public void tick() {
+		ensureLoaded();
+		Minecraft client = Minecraft.getInstance();
+		if (client.player == null || client.level == null || this.waypoints.isEmpty()) {
+			return;
+		}
+		String dimension = client.level.dimension().identifier().toString();
+		List<Waypoint> reached = new ArrayList<>();
+		for (Waypoint waypoint : this.waypoints) {
+			if (!waypoint.dimension().equals(dimension)) {
+				continue;
+			}
+			double distance = waypoint.location().distanceFrom(client);
+			if (distance >= 0 && distance <= ARRIVAL_RADIUS) {
+				reached.add(waypoint);
+			}
+		}
+		if (reached.isEmpty()) {
+			return;
+		}
+		for (Waypoint waypoint : reached) {
+			this.waypoints.remove(waypoint);
+			client.gui.getChat().addMessage(net.minecraft.network.chat.Component.literal("[Group Chat] ")
+					.withStyle(net.minecraft.ChatFormatting.DARK_PURPLE)
+					.append(net.minecraft.network.chat.Component.literal("reached waypoint " + waypoint.name())
+							.withStyle(net.minecraft.ChatFormatting.GREEN)));
+			client.getSoundManager().play(net.minecraft.client.resources.sounds.SimpleSoundInstance
+					.forUI(net.minecraft.sounds.SoundEvents.PLAYER_LEVELUP, 1.4F, 0.6F));
+		}
 		this.save();
 	}
 

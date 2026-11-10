@@ -86,6 +86,15 @@ public final class UiKit {
 				width, height, textureWidth, textureHeight, textureWidth, textureHeight);
 	}
 
+	/** Centred text with a dark rounded-ish backdrop, used for waypoint labels. */
+	public static void tag(GuiGraphics graphics, Font font, String text, int centerX, int y, int accent) {
+		int width = font.width(text) + 8;
+		int x = centerX - width / 2;
+		graphics.fill(x, y - 1, x + width, y + 9, 0x90000000);
+		graphics.fill(x, y - 1, x + width, y, (accent & 0x00FFFFFF) | 0x60000000);
+		graphics.drawString(font, text, x + 4, y, 0xFFFFFFFF, false);
+	}
+
 	public static String trim(Font font, String text, int maxWidth) {
 		if (font.width(text) <= maxWidth) {
 			return text;
