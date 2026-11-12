@@ -26,6 +26,7 @@ import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
+import net.minecraft.util.Util;
 
 /**
  * Development-only smoke tests, enabled with {@code -Dgroupchat.devtools=true}.
@@ -46,6 +47,7 @@ public final class DebugHarness {
 	private static int phaseTicks;
 	private static HubScreen hub;
 	private static String groupId;
+	private static int lastGifSource = -1;
 
 	private DebugHarness() {
 	}
@@ -58,6 +60,10 @@ public final class DebugHarness {
 		if (!AGENT.isEmpty()) {
 			if (AGENT.equals("friend") || AGENT.equals("human")) {
 				LiveSession.init(AGENT);
+			} else if (AGENT.startsWith("sweep-")) {
+				FeatureSweep.init(AGENT);
+			} else if (AGENT.equals("modmenu")) {
+				ModMenuCheck.init();
 			} else {
 				AgentScenario.init(AGENT);
 			}
@@ -223,8 +229,52 @@ public final class DebugHarness {
 					ClientPlayNetworking.send(new Payloads.SendSticker(groupId, "party"));
 					sendImage();
 					log("sent text + sticker + image");
-				} else if (phaseTicks > 80) {
+				} else if (phaseTicks == 40) {
+					sendGif();
+				} else if (phaseTicks > 120) {
 					shot(client, 9);
+					phase = 7;
+					phaseTicks = 0;
+				}
+			}
+			case 8 -> {
+				// open the GIF picker with a search already run, so the grid can be checked
+				if (phaseTicks > 20) {
+					openGifPicker(client);
+					phase = 9;
+					phaseTicks = 0;
+				}
+			}
+			case 9 -> {
+				if (phaseTicks == 60) {
+					shot(client, 10);
+				} else if (phaseTicks > 90) {
+					log("done, stopping client");
+					client.stop();
+				}
+			}
+			case 7 -> {
+				// verify the GIF actually animates: the source rectangle must move between frames
+				com.example.groupchat.client.media.GifTexture gif = findGif();
+				if (gif == null) {
+					if (phaseTicks > 600) {
+						log("FAIL gif_animation: the GIF never reached the client");
+						phase = 6;
+						phaseTicks = 0;
+					}
+					return;
+				}
+				if (lastGifSource < 0) {
+					lastGifSource = gif.sourceX();
+					return;
+				}
+				if (gif.sourceX() != lastGifSource) {
+					log("PASS gif_animation: frame moved from x=" + lastGifSource + " to x=" + gif.sourceX()
+							+ " (frame " + (gif.sourceX() / gif.frameWidth()) + " of " + gif.frameCount() + ")");
+					phase = 8;
+					phaseTicks = 0;
+				} else if (phaseTicks > 600) {
+					log("FAIL gif_animation: the frame never advanced");
 					phase = 6;
 					phaseTicks = 0;
 				}
@@ -240,6 +290,18 @@ public final class DebugHarness {
 		}
 	}
 
+	/**
+	 * Opens the GIF picker and runs a search in it, so the grid and its previews can be checked.
+	 */
+	private static void openGifPicker(Minecraft client) {
+		com.example.groupchat.client.ui.GifPickerScreen picker =
+				new com.example.groupchat.client.ui.GifPickerScreen(null, selection -> {
+				});
+		client.setScreen(picker);
+		picker.devSearch("celebration");
+		log("opened the GIF picker");
+	}
+
 	private static void sendImage() {
 		byte[] demo = demoImage();
 		if (demo == null) {
@@ -247,6 +309,46 @@ public final class DebugHarness {
 		}
 		GroupChatClient.INSTANCE.textures.accept(DEMO_IMAGE_ID, demo);
 		ClientPlayNetworking.send(new Payloads.UploadImage(groupId, DEMO_IMAGE_ID, demo));
+	}
+
+	/** The GIF that is currently on screen, if it has arrived. */
+	private static com.example.groupchat.client.media.GifTexture findGif() {
+		for (com.example.groupchat.client.media.GifTexture texture :
+				com.example.groupchat.client.media.GifCache.instance().textures()) {
+			return texture;
+		}
+		return null;
+	}
+
+	/**
+	 * Searches Tenor for a GIF and sends the first result into the group, so the whole GIF path
+	 * (search, download, upload, relay, decode, animate) can be checked in one run.
+	 */
+	private static void sendGif() {
+		Util.backgroundExecutor().execute(() -> {
+			try {
+				List<com.example.groupchat.client.media.TenorClient.Gif> results =
+						com.example.groupchat.client.media.TenorClient.search(
+								com.example.groupchat.client.ClientConfig.get().gifApiHost(),
+								com.example.groupchat.client.ClientConfig.get().gifApiKey(),
+								"celebration");
+				log("GIF search returned " + results.size() + " results");
+				if (results.isEmpty()) {
+					return;
+				}
+				com.example.groupchat.client.media.TenorClient.Gif gif = results.get(0);
+				byte[] data = com.example.groupchat.client.media.TenorClient.download(gif.smallGifUrl(),
+						com.example.groupchat.Constants.MAX_GIF_BYTES);
+				log("downloaded GIF " + gif.id() + " (" + data.length + " bytes)");
+				Minecraft.getInstance().execute(() -> {
+					String gifId = Long.toString(System.nanoTime(), 36);
+					ClientPlayNetworking.send(new Payloads.UploadGif(groupId, gifId, data));
+					log("uploaded GIF as " + gifId);
+				});
+			} catch (Exception exception) {
+				log("GIF harness failed: " + exception);
+			}
+		});
 	}
 
 	// ------------------------------------------------------------------ shared

@@ -94,6 +94,8 @@ public final class Payloads {
 		public static final int KIND_SYSTEM = 3;
 		/** Coordinates shared with one click; {@code text} holds {@code dimension|x|y|z}. */
 		public static final int KIND_LOCATION = 4;
+		/** An animated GIF; {@code imageId} names the stored {@code .gif} file. */
+		public static final int KIND_GIF = 5;
 	}
 
 	static void writeMessage(FriendlyByteBuf buf, MessageDto message) {
@@ -495,6 +497,52 @@ public final class Payloads {
 					buf.writeByteArray(payload.data());
 				},
 				buf -> new ImageData(buf.readUtf(64), buf.readByteArray(Constants.MAX_IMAGE_BYTES)));
+
+		@Override
+		public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** Uploads an animated GIF to a group. */
+	public record UploadGif(String groupId, String gifId, byte[] data) implements CustomPacketPayload {
+		public static final CustomPacketPayload.Type<UploadGif> TYPE = packetType("c2s/gif_upload");
+		public static final StreamCodec<RegistryFriendlyByteBuf, UploadGif> CODEC = codec(
+				(buf, payload) -> {
+					buf.writeUtf(payload.groupId(), 40);
+					buf.writeUtf(payload.gifId(), 64);
+					buf.writeByteArray(payload.data());
+				},
+				buf -> new UploadGif(buf.readUtf(40), buf.readUtf(64), buf.readByteArray(Constants.MAX_GIF_BYTES)));
+
+		@Override
+		public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** Asks the server for a GIF that belongs to one of the sender's groups. */
+	public record RequestGif(String gifId) implements CustomPacketPayload {
+		public static final CustomPacketPayload.Type<RequestGif> TYPE = packetType("c2s/gif_request");
+		public static final StreamCodec<RegistryFriendlyByteBuf, RequestGif> CODEC = codec(
+				(buf, payload) -> buf.writeUtf(payload.gifId(), 64),
+				buf -> new RequestGif(buf.readUtf(64)));
+
+		@Override
+		public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** Carries the bytes of an animated GIF. */
+	public record GifData(String gifId, byte[] data) implements CustomPacketPayload {
+		public static final CustomPacketPayload.Type<GifData> TYPE = packetType("s2c/gif_data");
+		public static final StreamCodec<RegistryFriendlyByteBuf, GifData> CODEC = codec(
+				(buf, payload) -> {
+					buf.writeUtf(payload.gifId(), 64);
+					buf.writeByteArray(payload.data());
+				},
+				buf -> new GifData(buf.readUtf(64), buf.readByteArray(Constants.MAX_GIF_BYTES)));
 
 		@Override
 		public CustomPacketPayload.Type<? extends CustomPacketPayload> type() {

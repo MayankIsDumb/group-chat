@@ -1,0 +1,101 @@
+// Shared Loom/Fabric configuration for the ported Minecraft versions.
+// Each version folder sets ext.mcVersion / ext.fabricApiVersion and applies this script.
+
+apply plugin: 'maven-publish'
+
+println "[port] Minecraft ${project.mcVersion} / Fabric API ${project.fabricApiVersion}"
+
+version = project.findProperty('mod_version') ?: '1.0.0'
+group = 'com.example.groupchat'
+
+repositories {
+	mavenCentral()
+	maven {
+		name = 'TerraformersMC'
+		url = 'https://maven.terraformersmc.com/releases/'
+	}
+	maven {
+		name = 'Modrinth'
+		url = 'https://api.modrinth.com/maven'
+		content {
+			includeGroup 'maven.modrinth'
+		}
+	}
+	maven {
+		name = 'MaxHenkel'
+		url = 'https://maven.maxhenkel.de/repository/public'
+		content {
+			includeGroup 'de.maxhenkel.voicechat'
+		}
+	}
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	runs {
+		client {
+			vmArg "-Xmx1200M"
+			property("groupchat.devtools", (project.findProperty("gcDevtools") ?: "false").toString())
+			property("groupchat.devtools.connect", (project.findProperty("gcConnect") ?: "").toString())
+			property("groupchat.devtools.agent", (project.findProperty("gcAgent") ?: "").toString())
+		}
+		server {
+			vmArg "-Xmx700M"
+		}
+	}
+
+	mods {
+		"groupchat" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	// Minecraft 26.x ships unobfuscated, so there are no mappings and nothing gets remapped.
+	// The no-remap Loom plugin has no modImplementation; plain implementation still puts the
+	// aggregate Fabric API's nested module jars on the compile and runtime classpaths.
+	minecraft "com.mojang:minecraft:${project.mcVersion}"
+	implementation "net.fabricmc:fabric-loader:0.20.1"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabricApiVersion}"
+	// Optional Mod Menu integration: the settings screen is also reachable from the mod list.
+	compileOnly "com.terraformersmc:modmenu:${project.modMenuVersion}"
+	runtimeOnly "com.terraformersmc:modmenu:${project.modMenuVersion}"
+	// Optional Simple Voice Chat integration: the plugin mirrors the calls into SVC groups.
+	compileOnly "de.maxhenkel.voicechat:voicechat-api:2.6.27"
+	runtimeOnly "maven.modrinth:simple-voice-chat:${project.voiceChatVersion}"
+}
+
+processResources {
+	def version = project.version
+	def mcVersion = project.mcVersion
+	inputs.property "version", version
+	inputs.property "mcVersion", mcVersion
+
+	filesMatching("fabric.mod.json") {
+		expand "version": version, "mcVersion": mcVersion
+	}
+}
+
+// Minecraft 26.x requires Java 25
+tasks.withType(JavaCompile).configureEach {
+	it.options.release = 25
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+
+	withSourcesJar()
+}
+
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			from components.java
+		}
+	}
+}

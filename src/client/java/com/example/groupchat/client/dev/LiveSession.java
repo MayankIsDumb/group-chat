@@ -46,6 +46,11 @@ public final class LiveSession {
 	private boolean movingToWaypoint;
 	private boolean screenshotDone;
 	private boolean createdTestWaypoint;
+	/**
+	 * The tick until which the agent needs the world drawn on screen, so the pause menu is closed
+	 * for it. Outside that window the player is in charge of the window and the escape menu works.
+	 */
+	private int worldVisibleUntil;
 
 	private LiveSession(String role) {
 		this.role = role;
@@ -60,9 +65,7 @@ public final class LiveSession {
 	private void tick(Minecraft client) {
 		if (this.phase == 0) {
 			if (client.screen instanceof TitleScreen && client.getOverlay() == null && this.ticks++ > 10) {
-				this.log("connecting to " + ADDRESS);
-				ServerData data = new ServerData("live", ADDRESS, ServerData.Type.OTHER);
-				ConnectScreen.startConnecting(null, client, ServerAddress.parseString(ADDRESS), data, false, null);
+				this.connect(client);
 				this.phase = 1;
 				this.ticks = 0;
 			}
@@ -74,9 +77,11 @@ public final class LiveSession {
 				this.log("joined as " + this.selfName);
 				this.phase = 2;
 				this.ticks = 0;
-			} else if (this.ticks++ > 900) {
-				this.log("could not join");
-				client.stop();
+			} else if (this.ticks > 200) {
+				// the server may still be booting, so keep trying instead of giving up
+				this.log("retrying the connection to " + ADDRESS);
+				this.connect(client);
+				this.ticks = 0;
 			}
 			return;
 		}
@@ -85,7 +90,10 @@ public final class LiveSession {
 		}
 		// Only the scripted agent manipulates menus/death screens - the human keeps full control.
 		if (!this.role.equals("human")) {
-			if (client.screen instanceof PauseScreen) {
+			// The pause menu is swallowed only while the agent needs the world on screen for its
+			// own screenshot. Everywhere else the window belongs to the player, so the escape
+			// menu has to stay open.
+			if (this.ticks < this.worldVisibleUntil && client.screen instanceof PauseScreen) {
 				client.setScreen(null);
 			}
 			if (client.player.isDeadOrDying()) {
@@ -100,6 +108,13 @@ public final class LiveSession {
 			return; // the player is driving
 		}
 		this.tickFriend(client);
+	}
+
+	/** Starts a connection to the test server. */
+	private void connect(Minecraft client) {
+		this.log("connecting to " + ADDRESS);
+		ServerData data = new ServerData("live", ADDRESS, ServerData.Type.OTHER);
+		ConnectScreen.startConnecting(null, client, ServerAddress.parseString(ADDRESS), data, false, null);
 	}
 
 	// ----------------------------------------------------------------- friend
@@ -176,6 +191,9 @@ public final class LiveSession {
 		if (this.ticks < 200 || this.screenshotDone) {
 			return;
 		}
+		// the agent needs the world on screen for its screenshot, so the pause menu stays closed
+		// until the shot is taken
+		this.worldVisibleUntil = this.ticks + 120;
 		List<WaypointManager.Waypoint> waypoints = WaypointManager.INSTANCE.all();
 		if (waypoints.isEmpty()) {
 			// nothing pinned yet: drop a throwaway waypoint so the beacon beam can be checked
@@ -211,6 +229,8 @@ public final class LiveSession {
 			this.screenshotDone = true;
 			DevShots.shot(client, "friend-waypoint");
 			this.log("screenshot taken");
+			// the shot has been queued, so the world may still be needed for one more frame
+			this.worldVisibleUntil = this.ticks + 2;
 		}
 	}
 

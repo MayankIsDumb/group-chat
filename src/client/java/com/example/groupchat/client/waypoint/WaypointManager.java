@@ -39,13 +39,18 @@ public final class WaypointManager {
 	}
 
 	public record Waypoint(String id, String name, String dimension, double x, double y, double z, int color,
-			boolean visible) {
+			boolean visible, String owner) {
 		public SharedLocation location() {
 			return new SharedLocation(this.dimension, this.x, this.y, this.z);
 		}
 
+		public String ownerName() {
+			return this.owner == null ? "" : this.owner;
+		}
+
 		public Waypoint withVisible(boolean value) {
-			return new Waypoint(this.id, this.name, this.dimension, this.x, this.y, this.z, this.color, value);
+			return new Waypoint(this.id, this.name, this.dimension, this.x, this.y, this.z, this.color, value,
+					this.owner);
 		}
 	}
 
@@ -92,10 +97,14 @@ public final class WaypointManager {
 		}
 		String sender = message.sender().isBlank() ? "unknown" : message.sender();
 		String name = sender + "'s spot" + (groupName == null || groupName.isBlank() ? "" : " · #" + groupName);
-		return add(location, name, colorFor(sender));
+		return add(location, name, colorFor(sender), sender);
 	}
 
 	public Waypoint add(SharedLocation location, String name, int color) {
+		return add(location, name, color, "");
+	}
+
+	public Waypoint add(SharedLocation location, String name, int color, String owner) {
 		ensureLoaded();
 		for (Waypoint existing : this.waypoints) {
 			if (existing.dimension().equals(location.dimension())
@@ -113,7 +122,8 @@ public final class WaypointManager {
 				location.y(),
 				location.z(),
 				color,
-				true);
+				true,
+				owner == null ? "" : owner);
 		this.waypoints.add(waypoint);
 		while (this.waypoints.size() > MAX_WAYPOINTS) {
 			this.waypoints.remove(0);
@@ -128,7 +138,8 @@ public final class WaypointManager {
 		}
 		SharedLocation location = SharedLocation.of(player);
 		String name = "My spot " + location.pretty();
-		return add(location, name, 0xFF8B7BFF);
+		// the waypoint belongs to the player, so the arrival check leaves it alone
+		return add(location, name, 0xFF8B7BFF, player.getScoreboardName());
 	}
 
 	public void remove(String id) {
@@ -163,9 +174,13 @@ public final class WaypointManager {
 			return;
 		}
 		String dimension = client.level.dimension().identifier().toString();
+		String self = client.player.getScoreboardName();
 		List<Waypoint> reached = new ArrayList<>();
 		for (Waypoint waypoint : this.waypoints) {
 			if (!waypoint.dimension().equals(dimension)) {
+				continue;
+			}
+			if (self.equals(waypoint.ownerName())) {
 				continue;
 			}
 			double distance = waypoint.location().distanceFrom(client);

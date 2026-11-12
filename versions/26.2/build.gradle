@@ -1,0 +1,15 @@
+plugins {
+	id 'net.fabricmc.fabric-loom' version '1.19.4'
+}
+
+ext.mcVersion = '26.2'
+ext.fabricApiVersion = '0.161.0+26.2'
+ext.modMenuVersion = '20.0.3'
+ext.voiceChatVersion = 'ul3tRpKz'
+
+apply from: '../common.gradle'
+
+// version-specific mod metadata
+base {
+	archivesName = "groupchat-26.2"
+}

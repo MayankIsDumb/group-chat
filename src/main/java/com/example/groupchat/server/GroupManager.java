@@ -1,6 +1,7 @@
 package com.example.groupchat.server;
 
 import com.example.groupchat.Constants;
+import com.example.groupchat.voice.VoiceBridge;
 import com.example.groupchat.GroupChat;
 import com.example.groupchat.net.Payloads;
 import com.example.groupchat.net.Payloads.GroupDto;
@@ -21,10 +22,12 @@ import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import net.minecraft.server.MinecraftServer;
@@ -36,6 +39,8 @@ import net.minecraft.world.level.storage.LevelResource;
  */
 public final class GroupManager {
 	private static final SecureRandom RANDOM = new SecureRandom();
+	/** Number of base-36 characters in a group id. */
+	private static final int ID_LENGTH = 8;
 	private static GroupManager instance;
 
 	private final MinecraftServer server;
@@ -123,6 +128,23 @@ public final class GroupManager {
 	}
 
 	public void tick() {
+		List<VoiceBridge.Call> calls = new ArrayList<>();
+		for (GroupData group : this.groups.values()) {
+			if (group.inCall.isEmpty()) {
+				continue;
+			}
+			List<ServerPlayer> members = new ArrayList<>();
+			for (String name : group.inCall) {
+				ServerPlayer player = player(name);
+				if (player != null) {
+					members.add(player);
+				}
+			}
+			if (!members.isEmpty()) {
+				calls.add(new VoiceBridge.Call(group.id, group.name, members));
+			}
+		}
+		VoiceBridge.update(calls);
 		if (!this.dirty) {
 			return;
 		}
@@ -433,8 +455,23 @@ public final class GroupManager {
 		return playerName == null ? null : this.server.getPlayerList().getPlayerByName(playerName);
 	}
 
+	/**
+	 * Short, URL-safe group id.
+	 *
+	 * <p>{@code Long.toUnsignedString} avoids the sign problem of {@code Math.abs} (which leaves
+	 * {@code Long.MIN_VALUE} negative) and the random long is drawn as base-36 digits until enough
+	 * of them are collected, so the id is never shorter than {@link #ID_LENGTH} characters.
+	 *
+	 * <p>The <em>last</em> {@link #ID_LENGTH} characters are kept on purpose: the leading base-36
+	 * digits are not uniform (three quarters of all random values have 13 digits, which makes the
+	 * first digit collapse onto '1'-'3'), while the trailing digits are spread evenly.
+	 */
 	private static String newId() {
-		return Long.toString(Math.abs(RANDOM.nextLong()), 36).substring(0, 8);
+		StringBuilder builder = new StringBuilder(ID_LENGTH);
+		while (builder.length() < ID_LENGTH) {
+			builder.append(Long.toUnsignedString(RANDOM.nextLong(), 36));
+		}
+		return builder.substring(builder.length() - ID_LENGTH);
 	}
 
 	public List<String> onlinePlayerNames() {

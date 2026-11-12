@@ -3,6 +3,8 @@ package com.example.groupchat.client.ui;
 import com.example.groupchat.Constants;
 import com.example.groupchat.client.ClientState;
 import com.example.groupchat.client.GroupChatClient;
+import com.example.groupchat.client.media.GifCache;
+import com.example.groupchat.client.media.GifTexture;
 import com.example.groupchat.client.media.ImageUtil;
 import com.example.groupchat.client.media.StickerAssets;
 import com.example.groupchat.client.media.TextureCache;
@@ -156,7 +158,7 @@ public class HubScreen extends Screen {
 		int iconW = 22;
 		int coordsW = 46;
 		int x = this.rightX() + 6;
-		int width = this.rightW() - 12 - buttonW - iconW * 2 - coordsW - 12;
+		int width = this.rightW() - 12 - buttonW - iconW * 3 - coordsW - 12;
 		if (this.composer != null) {
 			this.composer.setX(x);
 			this.composer.setY(by);
@@ -374,7 +376,8 @@ public class HubScreen extends Screen {
 		int sendX = x + width - 6 - sendW;
 		int stickerX = sendX - 4 - iconW;
 		int imageX = stickerX - 4 - iconW;
-		int coordsX = imageX - 4 - coordsW;
+		int gifX = imageX - 4 - iconW;
+		int coordsX = gifX - 4 - coordsW;
 		boolean canSend = !this.composer.getValue().isBlank();
 		UiKit.button(graphics, this.font, sendX, composerY, sendW, 16, Component.literal("Send"), mouseX, mouseY, true, canSend);
 		this.addClick(sendX, composerY, sendW, 16, this::sendText);
@@ -382,6 +385,8 @@ public class HubScreen extends Screen {
 		this.addClick(imageX, composerY, iconW, 16, () -> this.minecraft.setScreen(new ImagePickerScreen(this, this::sendImageFile)));
 		UiKit.button(graphics, this.font, stickerX, composerY, iconW, 16, Component.literal("Stk"), mouseX, mouseY, false);
 		this.addClick(stickerX, composerY, iconW, 16, () -> this.minecraft.setScreen(new StickerPickerScreen(this, this::sendSticker)));
+		UiKit.button(graphics, this.font, gifX, composerY, iconW, 16, Component.literal("Gif"), mouseX, mouseY, false);
+		this.addClick(gifX, composerY, iconW, 16, () -> this.minecraft.setScreen(new GifPickerScreen(this, this::sendGif)));
 		boolean canShare = this.minecraft != null && this.minecraft.player != null;
 		UiKit.button(graphics, this.font, coordsX, composerY, coordsW, 16, Component.literal("Coords"), mouseX, mouseY, false, canShare);
 		if (canShare) {
@@ -538,6 +543,10 @@ public class HubScreen extends Screen {
 				int[] size = this.thumbSize(message.imageId(), Math.min(width - 70, 260), 190);
 				yield size[1] + 24;
 			}
+			case MessageDto.KIND_GIF -> {
+				int[] size = this.gifSize(message.imageId(), Math.min(width - 70, 260), 190);
+				yield size[1] + 24;
+			}
 			default -> {
 				List<FormattedCharSequence> lines = this.font.split(Component.literal(message.text()), width - 16);
 				yield 14 + lines.size() * 10 + 4;
@@ -560,6 +569,7 @@ public class HubScreen extends Screen {
 		int contentY = y + 13;
 		switch (message.kind()) {
 			case MessageDto.KIND_IMAGE -> this.drawImage(graphics, message, x, contentY, width, mouseX, mouseY);
+			case MessageDto.KIND_GIF -> this.drawGif(graphics, message, x, contentY, width, mouseX, mouseY);
 			case MessageDto.KIND_LOCATION -> this.drawLocation(graphics, message, x, contentY, width, mouseX, mouseY);
 			case MessageDto.KIND_STICKER -> {
 				UiKit.fill(graphics, x - 2, contentY - 2, 68, 68, 0x30000000);
@@ -589,6 +599,38 @@ public class HubScreen extends Screen {
 		UiKit.blitTexture(graphics, entry.location(), x, y, size[0], size[1], entry.width(), entry.height());
 		final String imageId = message.imageId();
 		this.addClick(x, y, size[0], size[1], () -> this.zoomImageId = imageId);
+	}
+
+	/** Draws an animated GIF, using the frame that is current right now. */
+	private void drawGif(GuiGraphics graphics, MessageDto message, int x, int y, int width, int mouseX, int mouseY) {
+		GifTexture texture = GifCache.instance().get(message.imageId());
+		if (texture == null) {
+			graphics.drawCenteredString(this.font, "loading GIF...", x + width / 2, y + 6, UiKit.TEXT_DIM);
+			return;
+		}
+		int maxWidth = Math.min(width - 70, 260);
+		int maxHeight = 190;
+		float scale = Math.min((float) maxWidth / texture.frameWidth(),
+				(float) maxHeight / texture.frameHeight());
+		scale = Math.min(scale, 1.0F);
+		int drawWidth = Math.max(1, Math.round(texture.frameWidth() * scale));
+		int drawHeight = Math.max(1, Math.round(texture.frameHeight() * scale));
+		UiKit.fill(graphics, x - 2, y - 2, drawWidth + 4, drawHeight + 4, 0x50000000);
+		UiKit.blitTextureRegion(graphics, texture.location(), x, y, drawWidth, drawHeight,
+				texture.sourceX(), 0, texture.frameWidth(), texture.frameHeight(),
+				texture.sheetWidth(), texture.sheetHeight());
+	}
+
+	/** The on-screen size of a GIF, or a placeholder while it is still loading. */
+	private int[] gifSize(String gifId, int maxWidth, int maxHeight) {
+		GifTexture texture = GifCache.instance().get(gifId);
+		if (texture == null) {
+			return new int[]{Math.min(maxWidth, 180), 72};
+		}
+		float scale = Math.min((float) maxWidth / texture.frameWidth(), (float) maxHeight / texture.frameHeight());
+		scale = Math.min(scale, 1.0F);
+		return new int[]{Math.max(1, Math.round(texture.frameWidth() * scale)),
+				Math.max(1, Math.round(texture.frameHeight() * scale))};
 	}
 
 	private void drawLocation(GuiGraphics graphics, MessageDto message, int x, int y, int width, int mouseX, int mouseY) {
@@ -831,6 +873,19 @@ public class HubScreen extends Screen {
 				this.minecraft.execute(() -> this.status("Image failed: " + exception.getMessage()));
 			}
 		});
+	}
+
+	/** Uploads a picked GIF to the active group. */
+	private void sendGif(GifPickerScreen.Selection selection) {
+		GroupDto group = this.state.activeGroup();
+		if (group == null) {
+			this.status("Open a group before sending a GIF");
+			return;
+		}
+		String gifId = Long.toString(System.nanoTime(), 36) + Long.toString((long) (Math.random() * 9_999_999L), 36);
+		ClientPlayNetworking.send(new Payloads.UploadGif(group.id(), gifId, selection.data()));
+		this.status("GIF sent to #" + group.name());
+		this.scroll = 0;
 	}
 
 	private void createGroup() {

@@ -5,9 +5,9 @@
 	"name": "Group Chat",
 	"description": "Discord-style group chats inside Minecraft: groups, invites, images, stickers and voice calls.",
 	"authors": [
-		"Group Chat"
+		"Mayank"
 	],
-	"license": "CC0-1.0",
+	"license": "MIT",
 	"icon": "assets/groupchat/icon.png",
 	"environment": "*",
 	"entrypoints": {
@@ -16,6 +16,12 @@
 		],
 		"client": [
 			"com.example.groupchat.client.GroupChatClient"
+		],
+		"modmenu": [
+			"com.example.groupchat.client.ModMenuIntegration"
+		],
+		"voicechat": [
+			"com.example.groupchat.voice.SvcPlugin"
 		]
 	},
 	"depends": {
@@ -23,5 +29,11 @@
 		"minecraft": "~1.21.11",
 		"java": ">=21",
 		"fabric-api": "*"
-	}
+	},
+	"suggests": {
+		"modmenu": "*"
+	},
+	"contributors": [
+		"Afkz Studio"
+	]
 }

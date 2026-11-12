@@ -33,6 +33,21 @@ public final class WaypointWorldRenderer {
 		WorldRenderEvents.AFTER_ENTITIES.register(WaypointWorldRenderer::render);
 	}
 
+	/**
+	 * Bakes the label glyphs during the client tick so the level render pass never has to upload
+	 * font textures. Uploading a font texture inside an open render pass is illegal and aborts the
+	 * frame with "Close the existing render pass before performing additional commands".
+	 */
+	public static void warmLabels() {
+		Minecraft client = Minecraft.getInstance();
+		if (client.font == null) {
+			return;
+		}
+		for (Waypoint waypoint : WaypointManager.INSTANCE.visible()) {
+			client.font.width(waypoint.name() + "  0123456789m");
+		}
+	}
+
 	private static void render(WorldRenderContext context) {
 		Minecraft client = Minecraft.getInstance();
 		if (client.player == null || client.level == null) {

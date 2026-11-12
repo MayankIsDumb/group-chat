@@ -14,14 +14,18 @@ import org.slf4j.Logger;
 
 /**
  * Stores chat images on disk, {@code <world>/groupchat/images/<groupId>/<imageId>.png}, with a small
- * in-memory byte cache. Images are only ever read back for members of the owning group.
+ * in-memory byte cache. Animated GIFs live next to them as {@code <imageId>.gif}. Images are only
+ * ever read back for members of the owning group.
  */
 public final class ImageStore {
 	private static final byte[] PNG_MAGIC = {(byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
+	private static final byte[] GIF_MAGIC_87 = {'G', 'I', 'F', '8', '7', 'a'};
+	private static final byte[] GIF_MAGIC_89 = {'G', 'I', 'F', '8', '9', 'a'};
 
 	private final Path root;
 	private final Logger logger;
 	private final Map<String, String> groupByImage = new LinkedHashMap<>();
+	private final Map<String, String> groupByGif = new LinkedHashMap<>();
 	private final Map<String, byte[]> cache = new LinkedHashMap<>(16, 0.75F, true) {
 		@Override
 		protected boolean removeEldestEntry(Map.Entry<String, byte[]> eldest) {
@@ -36,6 +40,7 @@ public final class ImageStore {
 
 	public void scan() {
 		this.groupByImage.clear();
+		this.groupByGif.clear();
 		if (!Files.isDirectory(this.root)) {
 			return;
 		}
@@ -50,6 +55,11 @@ public final class ImageStore {
 						this.groupByImage.put(fileNameToId(file.getFileName().toString()), groupId);
 					}
 				}
+				try (DirectoryStream<Path> files = Files.newDirectoryStream(groupDir, "*.gif")) {
+					for (Path file : files) {
+						this.groupByGif.put(fileNameToId(file.getFileName().toString()), groupId);
+					}
+				}
 			}
 		} catch (IOException exception) {
 			this.logger.warn("[groupchat] failed to scan image store", exception);
@@ -57,11 +67,20 @@ public final class ImageStore {
 	}
 
 	public boolean isPng(byte[] data) {
-		if (data == null || data.length < PNG_MAGIC.length) {
+		return startsWith(data, PNG_MAGIC);
+	}
+
+	/** GIFs are recognised by their {@code GIF87a} / {@code GIF89a} header. */
+	public boolean isGif(byte[] data) {
+		return startsWith(data, GIF_MAGIC_87) || startsWith(data, GIF_MAGIC_89);
+	}
+
+	private static boolean startsWith(byte[] data, byte[] magic) {
+		if (data == null || data.length < magic.length) {
 			return false;
 		}
-		for (int i = 0; i < PNG_MAGIC.length; i++) {
-			if (data[i] != PNG_MAGIC[i]) {
+		for (int i = 0; i < magic.length; i++) {
+			if (data[i] != magic[i]) {
 				return false;
 			}
 		}
@@ -113,6 +132,79 @@ public final class ImageStore {
 
 	public String groupOf(String imageId) {
 		return this.groupByImage.get(imageId);
+	}
+
+	/**
+	 * Stores an animated GIF.
+	 *
+	 * @return {@code null} on success, otherwise a user-facing error
+	 */
+	public String saveGif(String groupId, String gifId, byte[] data) {
+		if (!isGif(data)) {
+			return "That file is not a GIF.";
+		}
+		if (data.length > Constants.MAX_GIF_BYTES) {
+			return "GIF is too large (max " + (Constants.MAX_GIF_BYTES / 1000) + " KB).";
+		}
+		try {
+			Path groupDir = this.root.resolve(safe(groupId));
+			Files.createDirectories(groupDir);
+			Files.write(groupDir.resolve(safe(gifId) + ".gif"), data);
+			this.groupByGif.put(gifId, groupId);
+			this.cache.put(gifId, data);
+			evictOldestGifs(groupDir);
+			return null;
+		} catch (IOException exception) {
+			this.logger.warn("[groupchat] failed to store gif", exception);
+			return "Server could not store that GIF.";
+		}
+	}
+
+	public byte[] loadGif(String gifId) {
+		byte[] cached = this.cache.get(gifId);
+		if (cached != null) {
+			return cached;
+		}
+		String groupId = this.groupByGif.get(gifId);
+		if (groupId == null) {
+			return null;
+		}
+		Path file = this.root.resolve(safe(groupId)).resolve(safe(gifId) + ".gif");
+		try {
+			byte[] data = Files.readAllBytes(file);
+			this.cache.put(gifId, data);
+			return data;
+		} catch (IOException exception) {
+			return null;
+		}
+	}
+
+	/** The group that owns a GIF, used to check that the requester is a member. */
+	public String groupOfGif(String gifId) {
+		return this.groupByGif.get(gifId);
+	}
+
+	private void evictOldestGifs(Path groupDir) {
+		try (DirectoryStream<Path> files = Files.newDirectoryStream(groupDir, "*.gif")) {
+			List<Path> all = new ArrayList<>();
+			for (Path file : files) {
+				all.add(file);
+			}
+			if (all.size() <= Constants.MAX_GIFS_PER_GROUP) {
+				return;
+			}
+			all.sort(Comparator.comparingLong(path -> path.toFile().lastModified()));
+			int excess = all.size() - Constants.MAX_GIFS_PER_GROUP;
+			for (int i = 0; i < excess; i++) {
+				Path victim = all.get(i);
+				String id = fileNameToId(victim.getFileName().toString());
+				this.groupByGif.remove(id);
+				this.cache.remove(id);
+				Files.deleteIfExists(victim);
+			}
+		} catch (IOException exception) {
+			this.logger.warn("[groupchat] failed to prune gifs", exception);
+		}
 	}
 
 	private void evictOldest(Path groupDir) {

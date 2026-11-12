@@ -28,6 +28,7 @@ import net.minecraft.client.multiplayer.PlayerInfo;
  * <p>Enabled with {@code -Dgroupchat.devtools.agent=a|b} (plus {@code -Dgroupchat.devtools.connect}).
  */
 public final class AgentScenario {
+	private static final boolean HOLD = Boolean.getBoolean("groupchat.devtools.hold");
 	private static final String ADDRESS = System.getProperty("groupchat.devtools.connect", "").trim();
 
 	private final String role;
@@ -36,6 +37,11 @@ public final class AgentScenario {
 	private String groupId;
 	private String selfName;
 	private HubScreen hub;
+	/**
+	 * The tick until which the agent needs the world drawn on screen, so the pause menu is closed
+	 * for it. Outside that window the player is in charge of the window and the escape menu works.
+	 */
+	private int worldVisibleUntil;
 
 	private AgentScenario(String role) {
 		this.role = role;
@@ -81,8 +87,9 @@ public final class AgentScenario {
 		if (client.player == null || client.level == null) {
 			return;
 		}
-		// keep the world visible even when the window is in the background
-		if (client.screen instanceof net.minecraft.client.gui.screens.PauseScreen) {
+		// keep the world visible even when the window is in the background, but only while the
+		// agent still needs it for a screenshot - otherwise the escape menu has to work
+		if (this.ticks < this.worldVisibleUntil && client.screen instanceof net.minecraft.client.gui.screens.PauseScreen) {
 			client.setScreen(null);
 		}
 		if (client.player.isDeadOrDying()) {
@@ -159,6 +166,7 @@ public final class AgentScenario {
 			case 6 -> {
 				if (this.ticks == 30) {
 					this.clearToasts(client);
+					this.worldVisibleUntil = this.ticks + 40;
 					DevShots.shot(client, "a1");
 				} else if (this.ticks > 60) {
 					this.phase = 7;
@@ -179,10 +187,15 @@ public final class AgentScenario {
 			case 8 -> {
 				if (this.ticks == 20) {
 					this.clearToasts(client);
+					this.worldVisibleUntil = this.ticks + 40;
 					DevShots.shot(client, "a2");
 				} else if (this.ticks > 50) {
 					this.log("agent A done");
-					client.stop();
+					if (!HOLD) {
+						client.stop();
+					} else {
+						this.log("holding client for voice test");
+					}
 				}
 			}
 			default -> {
@@ -247,6 +260,7 @@ public final class AgentScenario {
 					client.setScreen(null);
 				} else if (this.ticks > 40) {
 					this.clearToasts(client);
+					this.worldVisibleUntil = this.ticks + 40;
 					DevShots.shot(client, "b1");
 					this.phase = 6;
 					this.ticks = 0;
@@ -261,6 +275,7 @@ public final class AgentScenario {
 					this.hub.devScrollToTop();
 				} else if (this.ticks > 140) {
 					this.clearToasts(client);
+					this.worldVisibleUntil = this.ticks + 40;
 					DevShots.shot(client, "b2");
 					this.phase = 7;
 					this.ticks = 0;
@@ -269,7 +284,11 @@ public final class AgentScenario {
 			case 7 -> {
 				if (this.ticks > 80) {
 					this.log("agent B done");
-					client.stop();
+					if (!HOLD) {
+						client.stop();
+					} else {
+						this.log("holding client for voice test");
+					}
 				}
 			}
 			default -> {

@@ -86,6 +86,76 @@ public final class UiKit {
 				width, height, textureWidth, textureHeight, textureWidth, textureHeight);
 	}
 
+	/**
+	 * Draws one region of a texture scaled into the given rectangle.
+	 *
+	 * <p>This is what an animated GIF needs: all frames live in one sheet and the source rectangle
+	 * picks the frame that should be on screen.
+	 */
+	public static void blitTextureRegion(GuiGraphics graphics, net.minecraft.resources.Identifier texture,
+			int x, int y, int width, int height,
+			int sourceX, int sourceY, int sourceWidth, int sourceHeight,
+			int textureWidth, int textureHeight) {
+		graphics.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, texture,
+				x, y, (float) sourceX, (float) sourceY,
+				width, height, sourceWidth, sourceHeight, textureWidth, textureHeight);
+	}
+
+	/**
+	 * A check mark, drawn from pixels so it never depends on the font having the glyph.
+	 *
+	 * @param size the height of the mark in pixels
+	 */
+	public static void check(GuiGraphics graphics, int x, int y, int size, int color) {
+		line(graphics, x, y + size / 2, x + size / 3, y + size - 1, color);
+		line(graphics, x + size / 3, y + size - 1, x + size - 1, y, color);
+	}
+
+	/** A cross, the counterpart of {@link #check}. */
+	public static void cross(GuiGraphics graphics, int x, int y, int size, int color) {
+		line(graphics, x, y, x + size - 1, y + size - 1, color);
+		line(graphics, x + size - 1, y, x, y + size - 1, color);
+	}
+
+	/**
+	 * A row of pips, where {@code filled} of them are lit. Used to show a setting with more than
+	 * two states without writing the states out.
+	 */
+	public static void pips(GuiGraphics graphics, int x, int y, int filled, int total, int color) {
+		for (int i = 0; i < total; i++) {
+			int pipX = x + i * 6;
+			if (i < filled) {
+				fill(graphics, pipX, y, 4, 4, color);
+			} else {
+				outline(graphics, pipX, y, 4, 4, color);
+			}
+		}
+	}
+
+	/** Draws a one pixel wide line. */
+	private static void line(GuiGraphics graphics, int x0, int y0, int x1, int y1, int color) {
+		int dx = Math.abs(x1 - x0);
+		int sx = x0 < x1 ? 1 : -1;
+		int dy = -Math.abs(y1 - y0);
+		int sy = y0 < y1 ? 1 : -1;
+		int error = dx + dy;
+		while (true) {
+			fill(graphics, x0, y0, 1, 1, color);
+			if (x0 == x1 && y0 == y1) {
+				return;
+			}
+			int doubled = 2 * error;
+			if (doubled >= dy) {
+				error += dy;
+				x0 += sx;
+			}
+			if (doubled <= dx) {
+				error += dx;
+				y0 += sy;
+			}
+		}
+	}
+
 	/** Centred text with a dark rounded-ish backdrop, used for waypoint labels. */
 	public static void tag(GuiGraphics graphics, Font font, String text, int centerX, int y, int accent) {
 		int width = font.width(text) + 8;
@@ -109,6 +179,34 @@ public final class UiKit {
 			builder.append(character);
 		}
 		return builder + ellipsis;
+	}
+
+	/**
+	 * Splits text into lines that each fit into {@code maxWidth}.
+	 *
+	 * <p>Words longer than the limit are kept whole, so a long word is never cut in half.
+	 */
+	public static java.util.List<String> wrap(Font font, String text, int maxWidth) {
+		java.util.List<String> lines = new java.util.ArrayList<>();
+		StringBuilder line = new StringBuilder();
+		for (String word : text.split("\\s+")) {
+			if (word.isEmpty()) {
+				continue;
+			}
+			String candidate = line.isEmpty() ? word : line + " " + word;
+			if (font.width(candidate) <= maxWidth) {
+				line = new StringBuilder(candidate);
+				continue;
+			}
+			if (!line.isEmpty()) {
+				lines.add(line.toString());
+			}
+			line = new StringBuilder(word);
+		}
+		if (!line.isEmpty()) {
+			lines.add(line.toString());
+		}
+		return lines;
 	}
 
 	public static void chip(GuiGraphics graphics, Font font, int x, int y, String text, int color) {

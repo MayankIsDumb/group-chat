@@ -230,6 +230,53 @@ public final class ServerNet {
 			}
 		});
 
+		ServerPlayNetworking.registerGlobalReceiver(Payloads.UploadGif.TYPE, (payload, context) -> {
+			GroupManager manager = GroupManager.get();
+			ServerPlayer player = context.player();
+			if (manager == null) {
+				return;
+			}
+			String self = self(player);
+			GroupData group = manager.find(self, payload.groupId());
+			if (group == null) {
+				notice(player, "You are not in that group.", true);
+				return;
+			}
+			if (!manager.rates().allow(self, "gif", Constants.RATE_GIF_PER_60S, 60_000L)) {
+				notice(player, "You are sending GIFs too quickly.", true);
+				return;
+			}
+			String gifId = payload.gifId() == null ? ""
+					: payload.gifId().toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_-]", "");
+			if (gifId.isEmpty() || gifId.length() > 40) {
+				notice(player, "Invalid GIF.", true);
+				return;
+			}
+			String error = manager.images().saveGif(group.id, gifId, payload.data());
+			if (error != null) {
+				notice(player, error, true);
+				return;
+			}
+			manager.post(group, self, MessageDto.KIND_GIF, "", gifId);
+		});
+
+		ServerPlayNetworking.registerGlobalReceiver(Payloads.RequestGif.TYPE, (payload, context) -> {
+			GroupManager manager = GroupManager.get();
+			ServerPlayer player = context.player();
+			if (manager == null) {
+				return;
+			}
+			String gifId = payload.gifId();
+			String groupId = manager.images().groupOfGif(gifId);
+			if (groupId == null || manager.find(self(player), groupId) == null) {
+				return;
+			}
+			byte[] data = manager.images().loadGif(gifId);
+			if (data != null) {
+				Protocol.send(player, new Payloads.GifData(gifId, data));
+			}
+		});
+
 		ServerPlayNetworking.registerGlobalReceiver(Payloads.CallJoin.TYPE, (payload, context) -> {
 			GroupManager manager = GroupManager.get();
 			if (manager != null) {

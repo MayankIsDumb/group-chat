@@ -31,6 +31,8 @@ public final class Protocol {
 		c2s.register(Payloads.SendLocation.TYPE, Payloads.SendLocation.CODEC);
 		c2s.registerLarge(Payloads.UploadImage.TYPE, Payloads.UploadImage.CODEC, Constants.LARGE_PAYLOAD_CHUNK);
 		c2s.register(Payloads.RequestImage.TYPE, Payloads.RequestImage.CODEC);
+		c2s.registerLarge(Payloads.UploadGif.TYPE, Payloads.UploadGif.CODEC, Constants.LARGE_PAYLOAD_CHUNK);
+		c2s.register(Payloads.RequestGif.TYPE, Payloads.RequestGif.CODEC);
 		c2s.register(Payloads.CallJoin.TYPE, Payloads.CallJoin.CODEC);
 		c2s.register(Payloads.VoiceFrame.TYPE, Payloads.VoiceFrame.CODEC);
 		c2s.register(Payloads.RequestHistory.TYPE, Payloads.RequestHistory.CODEC);
@@ -44,6 +46,7 @@ public final class Protocol {
 		s2c.register(Payloads.GroupState.TYPE, Payloads.GroupState.CODEC);
 		s2c.register(Payloads.GroupRemoved.TYPE, Payloads.GroupRemoved.CODEC);
 		s2c.registerLarge(Payloads.ImageData.TYPE, Payloads.ImageData.CODEC, Constants.LARGE_PAYLOAD_CHUNK);
+		s2c.registerLarge(Payloads.GifData.TYPE, Payloads.GifData.CODEC, Constants.LARGE_PAYLOAD_CHUNK);
 		s2c.register(Payloads.Voice.TYPE, Payloads.Voice.CODEC);
 		s2c.register(Payloads.Notice.TYPE, Payloads.Notice.CODEC);
 	}

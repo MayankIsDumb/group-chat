@@ -70,8 +70,18 @@ public final class ImageUtil {
 
 	/** Loads and downscales an image for a thumbnail (used by the image picker). */
 	public static byte[] thumbnail(Path path, int maxSize) throws IOException {
+		return thumbnail(Files.readAllBytes(path), maxSize);
+	}
+
+	/**
+	 * Loads and downscales raw image bytes into a PNG thumbnail.
+	 *
+	 * <p>Any format ImageIO understands is accepted; for an animated GIF only the first frame is
+	 * used, which is what a still preview wants anyway.
+	 */
+	public static byte[] thumbnail(byte[] raw, int maxSize) throws IOException {
 		BufferedImage source;
-		try (java.io.InputStream input = Files.newInputStream(path)) {
+		try (ByteArrayInputStream input = new ByteArrayInputStream(raw)) {
 			source = ImageIO.read(input);
 		}
 		if (source == null) {

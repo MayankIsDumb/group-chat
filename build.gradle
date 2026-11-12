@@ -4,11 +4,21 @@ plugins {
 }
 
 repositories {
-	// Add repositories to retrieve artifacts from in here.
-	// You should only use this when depending on other mods because
-	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
-	// for more information about repositories.
+	maven {
+		name = 'TerraformersMC'
+		url = 'https://maven.terraformersmc.com/releases/'
+	}
+	maven {
+		name = 'MaxHenkel'
+		url = 'https://maven.maxhenkel.de/repository/public'
+	}
+	maven {
+		name = 'Modrinth'
+		url = 'https://api.modrinth.com/maven'
+		content {
+			includeGroup 'maven.modrinth'
+		}
+	}
 }
 
 loom {
@@ -16,7 +26,8 @@ loom {
 
 	runs {
 		client {
-			vmArg "-Xmx1500M"
+			// ./gradlew runClient -PgcHeap=900M trims the heap on low memory machines
+			vmArg "-Xmx${project.findProperty('gcHeap') ?: '1500M'}"
 			// ./gradlew runClient -PgcDevtools=true runs the scripted UI smoke test
 			property("groupchat.devtools", (project.findProperty("gcDevtools") ?: "false").toString())
 			// ./gradlew runClient -PgcDevtools=true -PgcConnect=127.0.0.1:25565 joins a server
@@ -45,9 +56,18 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+
+	// Optional Mod Menu integration: compile against it and load it in dev for the config screen.
+	modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+	modLocalRuntime "com.terraformersmc:modmenu:${project.modmenu_version}"
+
+	// Optional Simple Voice Chat integration.
+	compileOnly "de.maxhenkel.voicechat:voicechat-api:2.6.27"
+	modLocalRuntime "maven.modrinth:simple-voice-chat:arpQQSyx"
 }
 
 processResources {
+	from('LICENSE')
 	def version = project.version
 	inputs.property "version", version
 

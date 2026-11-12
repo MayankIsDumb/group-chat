@@ -24,6 +24,18 @@ public final class Constants {
 	/** Payloads registered as "large" are split into packets of at most this size. */
 	public static final int LARGE_PAYLOAD_CHUNK = 30_000;
 
+	// --- gifs -----------------------------------------------------------------
+	/** Largest GIF that may be uploaded to a group. */
+	public static final int MAX_GIF_BYTES = 3_000_000;
+	/** GIFs are decoded and scaled down to this bounding box. */
+	public static final int MAX_GIF_DIMENSION = 200;
+	/** Frames kept per GIF; anything beyond this is dropped while decoding. */
+	public static final int MAX_GIF_FRAMES = 16;
+	/** GIFs stored per group before the oldest ones are evicted. */
+	public static final int MAX_GIFS_PER_GROUP = 24;
+	/** How many animated GIFs a client keeps decoded at once. */
+	public static final int MAX_GIF_CACHE = 3;
+
 	// --- voice ----------------------------------------------------------------
 	public static final int VOICE_SAMPLE_RATE = 16_000;
 	public static final int VOICE_FRAME_MS = 40;
@@ -38,6 +50,7 @@ public final class Constants {
 	public static final int RATE_TEXT_PER_10S = 40;
 	public static final int RATE_INVITE_PER_60S = 30;
 	public static final int RATE_IMAGE_PER_60S = 20;
+	public static final int RATE_GIF_PER_60S = 10;
 
 	private Constants() {
 	}

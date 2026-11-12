@@ -101,6 +101,10 @@ public final class VoiceClient {
 		leave();
 		this.callGroupId = groupId;
 		this.error = null;
+		if (VoiceBackend.useSimpleVoiceChat()) {
+			GroupChatClient.LOGGER.info("[groupchat] joined voice call in {} (Simple Voice Chat backend)", groupId);
+			return;
+		}
 		this.running.set(true);
 		openDevices();
 		this.playThread = new Thread(this::playLoop, "groupchat-voice-play");
@@ -248,6 +252,9 @@ public final class VoiceClient {
 	// ------------------------------------------------------------------ wiring
 
 	public void onVoice(String sender, byte[] data) {
+		if (VoiceBackend.useSimpleVoiceChat()) {
+			return;
+		}
 		short[] samples = Adpcm.decode(data, Constants.VOICE_FRAME_SAMPLES);
 		Queue<short[]> queue = this.inbox.computeIfAbsent(sender, ignored -> new ConcurrentLinkedQueue<>());
 		queue.add(samples);
@@ -259,6 +266,10 @@ public final class VoiceClient {
 
 	/** Called every client tick: drains captured frames onto the network. */
 	public void tick() {
+		if (VoiceBackend.useSimpleVoiceChat()) {
+			this.outbox.clear();
+			return;
+		}
 		String groupId = this.callGroupId;
 		if (groupId == null) {
 			this.outbox.clear();

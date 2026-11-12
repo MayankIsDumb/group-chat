@@ -1,9 +1,12 @@
 package com.example.groupchat.client;
 
 import com.example.groupchat.client.dev.DebugHarness;
+import com.example.groupchat.client.media.GifCache;
+import com.example.groupchat.client.media.GifTexture;
 import com.example.groupchat.client.media.TextureCache;
 import com.example.groupchat.client.ui.HubScreen;
 import com.example.groupchat.client.ui.WaypointsScreen;
+import com.example.groupchat.client.waypoint.SharedLocation;
 import com.example.groupchat.client.waypoint.WaypointManager;
 import com.example.groupchat.client.waypoint.WaypointOverlay;
 import com.example.groupchat.client.waypoint.WaypointWorldRenderer;
@@ -42,9 +45,21 @@ public class GroupChatClient implements ClientModInitializer {
 	public final TextureCache textures = new TextureCache();
 	public final VoiceClient voice = VoiceClient.INSTANCE;
 
+	private static final boolean AUTO_CALL = Boolean.getBoolean("groupchat.devtools.autocall");
+	/**
+	 * The category the key bindings show up under in the vanilla controls screen.
+	 *
+	 * <p>Registering it here puts all of them together under "Group Chat" instead of spreading
+	 * them over the vanilla categories.
+	 */
+	public static final KeyMapping.Category CATEGORY =
+			KeyMapping.Category.register(Identifier.fromNamespaceAndPath(Constants.MOD_ID, "group_chat"));
 	private static KeyMapping openKey;
 	private static KeyMapping talkKey;
 	private static KeyMapping waypointKey;
+	private static KeyMapping optionsKey;
+	private static KeyMapping shareKey;
+	private int autoCallTicks = -1;
 
 	@Override
 	public void onInitializeClient() {
@@ -53,11 +68,17 @@ public class GroupChatClient implements ClientModInitializer {
 		this.registerReceivers();
 
 		openKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.groupchat.open",
-				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_V, KeyMapping.Category.MULTIPLAYER));
+				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_V, CATEGORY));
 		talkKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.groupchat.talk",
-				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_N, KeyMapping.Category.MULTIPLAYER));
+				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_N, CATEGORY));
 		waypointKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.groupchat.waypoints",
-				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B, KeyMapping.Category.MULTIPLAYER));
+				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_B, CATEGORY));
+		// the same screen that Mod Menu hands out, so the settings also work without Mod Menu
+		optionsKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.groupchat.options",
+				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_O, CATEGORY));
+		// shares the spot you are standing on right away, without opening the chat first
+		shareKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.groupchat.share_position",
+				InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_M, CATEGORY));
 
 		WaypointManager.INSTANCE.ensureLoaded();
 		WaypointWorldRenderer.register();
@@ -92,6 +113,9 @@ public class GroupChatClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(Payloads.ImageData.TYPE,
 				(payload, context) -> this.textures.accept(payload.imageId(), payload.data()));
 
+		ClientPlayNetworking.registerGlobalReceiver(Payloads.GifData.TYPE,
+				(payload, context) -> GifCache.instance().accept(payload.gifId(), payload.data()));
+
 		ClientPlayNetworking.registerGlobalReceiver(Payloads.Voice.TYPE,
 				(payload, context) -> this.voice.onVoice(payload.sender(), payload.data()));
 
@@ -107,6 +131,17 @@ public class GroupChatClient implements ClientModInitializer {
 	}
 
 	private void onTick(Minecraft client) {
+		if (AUTO_CALL && client.player != null) {
+			if (this.autoCallTicks < 0) {
+				this.autoCallTicks = 0;
+			}
+			this.autoCallTicks++;
+			if (this.autoCallTicks == 80) {
+				client.player.connection.sendCommand("gchat create svctest");
+			} else if (this.autoCallTicks == 120) {
+				client.player.connection.sendCommand("gchat call svctest");
+			}
+		}
 		while (openKey.consumeClick()) {
 			if (client.player == null) {
 				continue;
@@ -122,10 +157,56 @@ public class GroupChatClient implements ClientModInitializer {
 				client.setScreen(new WaypointsScreen(client.screen));
 			}
 		}
+		while (optionsKey.consumeClick()) {
+			if (client.player != null && !(client.screen instanceof GroupChatConfigScreen)) {
+				client.setScreen(new GroupChatConfigScreen(client.screen));
+			}
+		}
+		while (shareKey.consumeClick()) {
+			this.sharePosition(client);
+		}
 		WaypointManager.INSTANCE.tick();
+		WaypointWorldRenderer.warmLabels();
 		this.voice.setTalking(talkKey.isDown());
 		this.voice.tick();
 		this.dropCallIfKicked();
+		this.advanceGifs();
+	}
+
+	/**
+	 * Shares the spot the player is standing on with the active group and pins it as a waypoint
+	 * right away, so the marker shows up in the world without opening the chat first.
+	 */
+	private void sharePosition(Minecraft client) {
+		if (client.player == null || client.level == null) {
+			return;
+		}
+		GroupDto group = this.state.activeGroup();
+		if (group == null) {
+			this.notify("No group is selected, so there is nobody to share your spot with");
+			return;
+		}
+		SharedLocation location = SharedLocation.of(client.player);
+		ClientPlayNetworking.send(new Payloads.SendLocation(group.id(), location.dimension(), location.x(),
+				location.y(), location.z()));
+		WaypointManager.INSTANCE.addHere(client.player);
+		this.notify("Shared your spot with #" + group.name());
+	}
+
+	/** Shows a short note in the chat so a key press always has some feedback. */
+	private void notify(String message) {
+		Minecraft.getInstance().gui.getChat().addMessage(Component.literal("[Group Chat] ")
+				.withStyle(ChatFormatting.DARK_PURPLE)
+				.append(Component.literal(message).withStyle(ChatFormatting.GRAY)));
+	}
+
+	/**
+	 * Steps every cached GIF forward. The frames are all in one sheet, so this only changes which
+	 * rectangle is drawn and never touches the GPU.
+	 */
+	private void advanceGifs() {		for (GifTexture texture : GifCache.instance().textures()) {
+			texture.advance(System.currentTimeMillis());
+		}
 	}
 
 	/** Stops the microphone if the player is no longer part of the call (kicked, group gone, call ended). */
@@ -152,6 +233,12 @@ public class GroupChatClient implements ClientModInitializer {
 
 	private void onIncomingMessage(MessageDto message) {
 		Minecraft client = Minecraft.getInstance();
+		if (ClientConfig.get().autoApproveWaypoints()
+				&& message.kind() == MessageDto.KIND_LOCATION
+				&& !message.sender().equals(this.state.selfName())) {
+			GroupDto autoGroup = this.state.group(message.groupId());
+			WaypointManager.INSTANCE.addFromMessage(message, autoGroup == null ? null : autoGroup.name());
+		}
 		boolean visible = client.screen instanceof HubScreen hub && hub.isShowingGroup(message.groupId());
 		if (visible || message.sender().equals(this.state.selfName())) {
 			return;

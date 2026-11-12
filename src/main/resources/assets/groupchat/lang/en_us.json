@@ -1,5 +1,20 @@
 {
+	"key.category.groupchat.group_chat": "Group Chat",
 	"key.groupchat.open": "Open Group Chat",
 	"key.groupchat.talk": "Push to talk (voice chat)",
-	"key.groupchat.waypoints": "Open waypoints"
+	"key.groupchat.waypoints": "Open waypoints",
+	"key.groupchat.options": "Open Group Chat settings",
+	"key.groupchat.share_position": "Share my position",
+	"groupchat.config.title": "Group Chat settings",
+	"groupchat.config.auto_approve": "Auto-approve waypoints",
+	"groupchat.config.auto_approve.hint": "New coordinates shared in your groups become waypoints automatically.",
+	"groupchat.config.voice": "Voice backend",
+	"groupchat.config.voice.hint": "Simple Voice Chat must also be installed on the server; the built-in voice is used otherwise.",
+	"groupchat.config.voice.auto": "Automatic",
+	"groupchat.config.voice.builtin": "Built-in",
+	"groupchat.config.voice.simple_voice_chat": "Simple Voice Chat",
+	"groupchat.config.gif_key": "GIF search key",
+	"groupchat.config.gif_key.hint": "Optional Tenor API key. Without one the public search page is used.",
+	"groupchat.config.gif_key.field": "API key",
+	"groupchat.config.gif_host.field": "API host"
 }
